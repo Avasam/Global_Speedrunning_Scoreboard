@@ -49,7 +49,7 @@ COL_USERNAME = 2
 COL_POINTS = 3
 COL_LAST_UPDATE = 4
 COL_USERID = 5
-ROW_LAST = 100000
+ROW_FIRST = 3
 
 MIN_LEADERBOARD_SIZE = 4
 # Highest 9 decimals constant to: Give a score for 20th rank with 30 runners

@@ -225,34 +225,32 @@ def get_updated_user(p_user_ID, p_statusLabel):
         statusLabel.configure(text="Updating the leaderboard...")
         debugstr = "\n"+str(user)
         print(debugstr)
-        try:
-            cell = worksheet.find(user._ID)
+        row_count = worksheet.row_count
+        # Try and find the user by its ID
+        cell_list = worksheet.range("E"+str(ROW_FIRST)+":E"+str(row_count))
+        row = None
+        for cell in cell_list:
+            if cell.value == user._ID:
+                row = cell.row
+                break
+        if row:
             print("User " + user._ID + " found. Updating its cell.")
-            cell_list = worksheet.range("B"+str(cell.row)+":D"+str(cell.row))
+            cell_list = worksheet.range("B"+str(row)+":D"+str(row))
             cell_list[0].value = user._name
             cell_list[1].value = user._points
-            cell_list[2].value = time.strftime("%H:%M %d/%m/%Y")
+            cell_list[2].value = time.strftime("%Y/%m/%d %H:%M")
             worksheet.update_cells(cell_list)
-        except gspread.exceptions.RequestError as exception:
-            print("*"*140)
-            print(exception)
-            print(exception.args[0])
-##            if exception.args[0] = 500: 
-        except gspread.exceptions.CellNotFound:
-            debugstr = "User ID" + user._ID + " not found. Using last row ("+str(ROW_LAST)+")."
+        # If user not found, add a row to the spreadsheet
+        else:
+            debugstr = "User ID" + user._ID + " not found. Adding a new row."
             print(debugstr)
-            last_row_user_ID = worksheet.cell(ROW_LAST, COL_USERID).value
-            if not last_row_user_ID:
-                cell_list = worksheet.range("B"+str(ROW_LAST)+":E"+str(ROW_LAST))
-                cell_list[0].value = user._name
-                cell_list[1].value = user._points
-                cell_list[2].value = time.strftime("%H:%M %d/%m/%Y")
-                cell_list[3].value = user._ID
-                worksheet.update_cells(cell_list)
-            else:
-                debugstr = "Couldn't add"+user._name+" as the last row was occupied by "+last_row_user_ID+". The spreadsheet must be full."
-                print(debugstr)
-                threadsException.append({"error":"No empty rows left", "details":debugstr})
+            values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
+                      user._name,
+                      user._points,
+                      time.strftime("%Y/%m/%d %H:%M"),
+                      user._ID]
+            worksheet.insert_row(values, index=row_count+1)
+
     else:
         errorStrList = []
         for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))

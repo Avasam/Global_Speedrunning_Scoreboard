@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 ###########################################################################
 ## Speedrun.com (unofficial) Global leaderboard
 ## Copyright (C) 2017 Samuel Therrien
@@ -68,11 +71,9 @@ class User():
             if "status" in infos.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":infos["message"]})
             if infos["data"]["role"] != "banned":
                 self._ID = infos["data"]["id"]
+                self._name = infos["data"]["names"].get("international")
                 japanese_name = infos["data"]["names"].get("japanese")
-                if japanese_name:
-                    self._name = japanese_name + " ("+infos["data"]["names"].get("international")+")"
-                else:
-                    self._name = infos["data"]["names"].get("international")
+                if japanese_name: self._name += " "+japanese_name
             else:
                 # TODO: remove from spreadsheet
                 pass
@@ -242,7 +243,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
             worksheet.update_cells(cell_list)
         # If user not found, add a row to the spreadsheet
         else:
-            debugstr = "User ID" + user._ID + " not found. Adding a new row."
+            debugstr = "User ID " + user._ID + " not found. Adding a new row."
             print(debugstr)
             values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
                       user._name,

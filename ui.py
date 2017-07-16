@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 ###########################################################################
 ## Speedrun.com (unofficial) Global leaderboard
 ## Copyright (C) 2017 Samuel Therrien

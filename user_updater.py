@@ -205,11 +205,10 @@ def get_updated_user(p_user_ID, p_statusLabel):
         statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
         try:
             gs_client = gspread.authorize(credentials)
-            docid = "1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo"
-            print("https://docs.google.com/spreadsheets/d/"+docid+"\n")
-            worksheet = gs_client.open_by_key(docid).sheet1
+            print("https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID+"\n")
+            worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
         except gspread.exceptions.SpreadsheetNotFound:
-            raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+docid})
+            raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID})
 
     #Refresh credentials
     gs_client.login()
@@ -232,18 +231,30 @@ def get_updated_user(p_user_ID, p_statusLabel):
         statusLabel.configure(text="Updating the leaderboard...")
         debugstr = "\n"+str(user)
         print(debugstr)
-        row_count = worksheet.row_count
+
         # Try and find the user by its ID
-        cell_list = worksheet.range("E"+str(ROW_FIRST)+":E"+str(row_count))
-        row = None
+        worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+        row = 0
+        # As of 2017/07/16 with current code using searching by range is faster than col_values most of the time by up to 0.5s
+#        t1 = time.time()
+        row_count = worksheet.row_count
+        cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
         for cell in cell_list:
             if cell.value == user._ID:
                 row = cell.row
                 break
+#        t2 = time.time()
+#        row_count = 0
+#        cell_values_list = worksheet.col_values(COL_USERID)
+#        for value in cell_values_list:
+#            row_count += 1
+#            if value == user._ID: row = row_count
+#        t3 = time.time()
+#        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
         timestamp = time.strftime("%Y/%m/%d %H:%M")
-        if row:
+        if row >= ROW_FIRST:
             print("User " + user._ID + " found. Updating its cell.")
-            cell_list = worksheet.range("B"+str(row)+":D"+str(row))
+            cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
             cell_list[0].value = user._name
             cell_list[1].value = user._points
             cell_list[2].value = timestamp

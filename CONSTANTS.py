@@ -35,7 +35,7 @@ import os.path
 ##    except FileNotFoundError as exception:
 ##        raise AnalyserError({"error":"API_KEY not found", "details":exception})
 API_KEY = ""
-
+SPREADSHEET_ID = "1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo"
 scope = ["https://spreadsheets.google.com/feeds"]
 CREDENTIALS_PATH = None
 try:

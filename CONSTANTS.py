@@ -37,12 +37,13 @@ import os.path
 API_KEY = ""
 
 scope = ["https://spreadsheets.google.com/feeds"]
+CREDENTIALS_PATH = None
 try:
     CREDENTIALS = os.path.join(sys._MEIPASS,"JSON_CREDENTIALS.json")
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS, scope)
 except AttributeError:
     print("CREDENTIALS not in sys._MEIPASS. Looking for file on local computer.")
     CREDENTIALS = "C:\ProgramData\Speedrun.com (unofficial) global leaderboard\JSON_CREDENTIALS.json"
+finally:
     try:
         credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS, scope)
     except FileNotFoundError as exception:

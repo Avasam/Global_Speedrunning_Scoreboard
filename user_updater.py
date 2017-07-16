@@ -183,6 +183,8 @@ def update_progress(p_current, p_max):
 
 global worksheet
 worksheet = None
+global gs_client
+gs_client = None
 def get_updated_user(p_user_ID, p_statusLabel):
     """Called from ui.update_user_thread() and AutoUpdateUsers.run()"""
     global statusLabel
@@ -192,21 +194,25 @@ def get_updated_user(p_user_ID, p_statusLabel):
     global statusLabel_max
     statusLabel_max = 0
     global worksheet
+    global gs_client
     global threadsException
     threadsException = []
 
     #Check if already connected
-    if not worksheet:
+    if not (gs_client and worksheet):
 
 	#Authentify to Google Sheets API
         statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
         try:
-            gc = gspread.authorize(credentials)
+            gs_client = gspread.authorize(credentials)
             docid = "1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo"
             print("https://docs.google.com/spreadsheets/d/"+docid+"\n")
-            worksheet = gc.open_by_key(docid).sheet1
+            worksheet = gs_client.open_by_key(docid).sheet1
         except gspread.exceptions.SpreadsheetNotFound:
             raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+docid})
+
+    #Refresh credentials if expired
+    if credentials.access_token_expired: gs_client.login()
 
     statusLabel.configure(text="Fetching online data from speedrun.com. Please wait...")
     user = User(p_user_ID)

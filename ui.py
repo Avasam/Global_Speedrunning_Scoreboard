@@ -58,15 +58,7 @@ def show_help():
 
 def update_user():
     update_userButton.configure(state=DISABLED)
-    temp = entry.get()
-    VALIDCHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890"
-    invalidChars = temp.translate({ord(i):None for i in VALIDCHARS})
-    if not temp or invalidChars:
-        statusLabel.configure(text="Error: Invalid code")
-        write_text("Report code contains the following invalid characters:\n"+invalidChars)
-        update_userButton.configure(state=NORMAL)
-    else:
-        _thread.start_new_thread(update_user_thread, (entry.get(), statusLabel))
+    _thread.start_new_thread(update_user_thread, (entry.get(), statusLabel))
 
 def update_user_thread(p_code, p_statusLabel):
     try:

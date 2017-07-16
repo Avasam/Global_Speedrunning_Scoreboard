@@ -278,17 +278,22 @@ class AutoUpdateUsers(Thread):
     def run(self):
         url = self.BASE_URL
         while True:
-            if not self.paused:
-                self.statusLabel.configure(text="Auto-updating userbase...")
-                users = get_file(url)
-                for user in users["data"]:
-                    get_updated_user(user["id"], self.statusLabel)
-                link_found = False
-                for link in users["pagination"]["links"]:
-                    if link["rel"] == "next":
-                        url = link["uri"]
-                        link_found = True
-                if not link_found: url = self.BASE_URL
+            self.__check_for_pause()
+            self.statusLabel.configure(text="Auto-updating userbase...")
+            users = get_file(url)
+            for user in users["data"]:
+                self.__check_for_pause()
+                get_updated_user(user["id"], self.statusLabel)
+            link_found = False
+            for link in users["pagination"]["links"]:
+                if link["rel"] == "next":
+                    url = link["uri"]
+                    link_found = True
+            if not link_found: url = self.BASE_URL
+
+    def __check_for_pause(self):
+        while self.paused:
+            pass
 
 def spam_test():
     def spam():

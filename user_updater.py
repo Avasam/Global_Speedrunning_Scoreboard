@@ -79,7 +79,7 @@ class User():
                 pass
         except UserUpdaterError as exception:
             threadsException.append(exception.args[0])
-        except Exception as exception:
+        except Exception:
             threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
 
     def set_points(self):
@@ -165,7 +165,7 @@ def get_file(p_url):
             if data.status_code in HTTP_RETRYABLE_ERRORS:
                 print(debugstr)
                 time.sleep(HTTPERROR_RETRY_DELAY)
-            else: raise UserUpdaterError({"error":"HTTPError "+str(data.status_code), "details":exception})
+            else: raise UserUpdaterError({"error":"HTTPError "+str(data.status_code), "details":exception.args[0]})
 
     data = data.json()
 
@@ -211,8 +211,8 @@ def get_updated_user(p_user_ID, p_statusLabel):
         except gspread.exceptions.SpreadsheetNotFound:
             raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+docid})
 
-    #Refresh credentials if expired
-    if credentials.access_token_expired: gs_client.login()
+    #Refresh credentials
+    gs_client.login()
 
     statusLabel.configure(text="Fetching online data from speedrun.com. Please wait...")
     user = User(p_user_ID)
@@ -240,12 +240,13 @@ def get_updated_user(p_user_ID, p_statusLabel):
             if cell.value == user._ID:
                 row = cell.row
                 break
+        timestamp = time.strftime("%Y/%m/%d %H:%M")
         if row:
             print("User " + user._ID + " found. Updating its cell.")
             cell_list = worksheet.range("B"+str(row)+":D"+str(row))
             cell_list[0].value = user._name
             cell_list[1].value = user._points
-            cell_list[2].value = time.strftime("%Y/%m/%d %H:%M")
+            cell_list[2].value = timestamp
             worksheet.update_cells(cell_list)
         # If user not found, add a row to the spreadsheet
         else:
@@ -254,7 +255,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
             values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
                       user._name,
                       user._points,
-                      time.strftime("%Y/%m/%d %H:%M"),
+                      timestamp,
                       user._ID]
             worksheet.insert_row(values, index=row_count+1)
 
@@ -289,7 +290,27 @@ class AutoUpdateUsers(Thread):
             users = get_file(url)
             for user in users["data"]:
                 self.__check_for_pause()
-                get_updated_user(user["id"], self.statusLabel)
+                #TODO: Log this better
+                while True:
+                    try:
+                        try:
+                            get_updated_user(user["id"], self.statusLabel)
+                            break
+                        except gspread.exceptions.RequestError as exception:
+                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+                                debugstr = str(exception.args[0])+". Retrying in "+str(HTTPERROR_RETRY_DELAY)+" seconds."
+                                print(debugstr)
+                                time.sleep(HTTPERROR_RETRY_DELAY)
+                            else:
+                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
+                        except Exception:
+                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
+                    except UserUpdaterError as exception:
+                        debugstr = "Skipping user "+user["id"]+". "+exception.args[0]["details"]
+                        print(debugstr)
+                        break
+
+
             link_found = False
             for link in users["pagination"]["links"]:
                 if link["rel"] == "next":

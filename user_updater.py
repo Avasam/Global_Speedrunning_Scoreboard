@@ -99,27 +99,6 @@ class User():
             threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
 
     def set_points(self):
-        try:
-            if not self._banned:
-                url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25&max=200"
-                PBs = get_file(url)
-                if "status" in PBs.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
-                self._points = 0
-                update_progress(0, len(PBs["data"]))
-                threads = []
-                for pb in PBs["data"]:
-                    threads.append(Thread(target=set_points_thread, args=(pb,)))
-                for t in threads: t.start()
-                for t in threads: t.join()
-                if self._banned: sef._points = 0 # In case the banned flag has been set mid-thread
-            else: self._points = 0
-        except UserUpdaterError as exception:
-            threadsException.append(exception.args[0])
-        except Exception as exception:
-            threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
-        finally:
-            update_progress(1, 0)
-
         def set_points_thread(pb):
             try:
                 # Check if it's a valid run (has a category, isn't an IL, has video verification)
@@ -150,6 +129,26 @@ class User():
             finally:
                 update_progress(1, 0)
 
+        try:
+            if not self._banned:
+                url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25&max=200"
+                PBs = get_file(url)
+                if "status" in PBs.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
+                self._points = 0
+                update_progress(0, len(PBs["data"]))
+                threads = []
+                for pb in PBs["data"]:
+                    threads.append(Thread(target=set_points_thread, args=(pb,)))
+                for t in threads: t.start()
+                for t in threads: t.join()
+                if self._banned: self._points = 0 # In case the banned flag has been set mid-thread
+            else: self._points = 0
+        except UserUpdaterError as exception:
+            threadsException.append(exception.args[0])
+        except Exception as exception:
+            threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
+        finally:
+            update_progress(1, 0)
 
 
 def get_leaderboard_size(p_game, p_category, p_variables):

@@ -36,26 +36,42 @@ class UserUpdaterError(Exception):
     pass
 
 class Run():
-    place = 0
-    leaderboard_size = 0
-    category = ""
     game = ""
+    category = ""
+    variables = {}
+    place = 0
+    _points = 0
+    __leaderboard_size = 0
 
-    def __init__(self, game, category, place):
-        self.place = place
-        self.category = category
+    def __init__(self, game, category, variables, place):
         self.game = game
+        self.category = category
+        self.variables = variables
+        self.place = place
+        self.__set_points()
 
     def __str__(self):
-        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self.place)+"/"+str(self.leaderboard_size)+">"
+        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self.place)+"/"+str(self._leaderboard_size)+">"
 
-    def set_leaderboard_size(self):
-        self.leaderboard_size = get_leaderboard_size(self.game, self.category)
+    #TODO: currently a player can be penalized by runs w/o videos as the leaderboard size will shrink but not its rank
+    def __set_leaderboard_size(self):
+        self._leaderboard_size = get_leaderboard_size(self.game, self.category, self.variables)
+
+    def __set_points(self):
+        self._points = 0
+        # Check if the place is worth any point
+        self.__set_leaderboard_size()
+        print(self)
+        if self._leaderboard_size >= self.place and self._leaderboard_size >= MIN_LEADERBOARD_SIZE:
+            # Give points according to the formula
+            formula_result = math.log(self._leaderboard_size-MIN_LEADERBOARD_SIZE+2) * (1/EXP_DECREASE_CONST) * math.exp(-(EXP_DECREASE_CONST*(self.place-1)))
+            self._points += min(self._leaderboard_size-self.place, math.floor(formula_result))
 
 class User():
     _points = 0
     _name = ""
     _ID = ""
+    _banned = False
 
     def __init__(self, ID_or_name):
         self._ID = ID_or_name
@@ -75,8 +91,8 @@ class User():
                 japanese_name = infos["data"]["names"].get("japanese")
                 if japanese_name: self._name += " "+japanese_name
             else:
-                # TODO: remove from spreadsheet
-                pass
+                self._banned = True
+                self._points = 0
         except UserUpdaterError as exception:
             threadsException.append(exception.args[0])
         except Exception:
@@ -84,54 +100,62 @@ class User():
 
     def set_points(self):
         try:
-            def set_points_thread(p_run):
-                # Check if the place is worth any point
-                p_run.set_leaderboard_size()
-                print(p_run)
-                if p_run.leaderboard_size >= p_run.place and p_run.leaderboard_size >= MIN_LEADERBOARD_SIZE:
-                    # Give points according to the formula
-                    formula_result = math.log(p_run.leaderboard_size-MIN_LEADERBOARD_SIZE+2) * (1/EXP_DECREASE_CONST) * math.exp(-(EXP_DECREASE_CONST*(run.place-1)))
-                    self._points += min(p_run.leaderboard_size-p_run.place, math.floor(formula_result))
-                update_progress(1, 0)
-
-            url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25&max=200"
-            PBs = get_file(url)
-            if "status" in PBs.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
-            self._points = 0
-            valid_runs = {}
-            update_progress(0, len(PBs["data"]))
-            for pb in PBs["data"]:
-                # Check if it's a valid run
-                if pb["run"]["category"] and not pb["run"]["level"] and pb["run"].get("videos"): # TODO?: allow runs that have levels, but no category?
-                    run = Run(pb["run"]["game"], pb["run"]["category"], pb["place"])
-                    # Update the rank if a run is already known (probably with different variables)
-                    # We do that to prevent having multiple PBs in the same category under different variables,
-                    # but we also don't want to check leaderboards specific to said variables as it'll return a leaderboard size way too small
-                    if run.category in valid_runs:
-                        valid_runs[run.category].place = min(valid_runs[run.category].place, run.place)
-                    else: # ... else add it to the valid runs dict
-                        valid_runs[run.category] = run
-                update_progress(1, 0)
-
-            # Compile the points for the runs
-            threads = []
-            for category, run in valid_runs.items():
-                threads.append(Thread(target=set_points_thread, args=[run]))
-            update_progress(0, len(threads))
-            for t in threads: t.start()
-            for t in threads: t.join()
-
-            update_progress(1, 0)
+            if not self._banned:
+                url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25&max=200"
+                PBs = get_file(url)
+                if "status" in PBs.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
+                self._points = 0
+                update_progress(0, len(PBs["data"]))
+                threads = []
+                for pb in PBs["data"]:
+                    threads.append(Thread(target=set_points_thread, args=(pb,)))
+                for t in threads: t.start()
+                for t in threads: t.join()
+                if self._banned: sef._points = 0 # In case the banned flag has been set mid-thread
+            else: self._points = 0
         except UserUpdaterError as exception:
             threadsException.append(exception.args[0])
         except Exception as exception:
             threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
+        finally:
+            update_progress(1, 0)
 
-def get_leaderboard_size(p_game, p_category): ##, values={}
+        def set_points_thread(pb):
+            try:
+                # Check if it's a valid run (has a category, isn't an IL, has video verification)
+                if pb["run"]["category"] and not pb["run"]["level"] and pb["run"].get("videos"): # TODO?: allow runs for games that have levels, but no category?
+                    #Get a list of the game's subcategory variables
+                    url = "http://www.speedrun.com/api/v1/games/"+pb["run"]["game"]+"/variables?max=200"
+                    game_variables = get_file(url)
+                    game_subcategory_ids = []
+                    for game_variable in game_variables["data"]:
+                        if game_variable["is-subcategory"] == True:
+                            game_subcategory_ids.append(game_variable["id"])
+
+                    pb_subcategory_variables = {}
+                    # For every variable in the run...
+                    for pb_var_id, pb_var_value in pb["run"]["values"].items():
+                        # ...find if said variable is one of the game's subcategories...
+                        if pb_var_id in game_subcategory_ids:
+                            # ... and add it to the run's subcategory variables
+                            pb_subcategory_variables[pb_var_id] = pb_var_value
+                            break
+
+                    run = Run(pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["place"])
+                    self._points += run._points
+            except UserUpdaterError as exception:
+                threadsException.append(exception.args[0])
+            except Exception as exception:
+                threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
+            finally:
+                update_progress(1, 0)
+
+
+
+def get_leaderboard_size(p_game, p_category, p_variables):
     try:
         url = "http://www.speedrun.com/api/v1/leaderboards/"+p_game+"/category/"+p_category+"?video-only=true&max=200"
-        # for key, value in values.items(): url += "&var-"+key+"="+value
-        # See note in User.set_points() concerning variables
+        for var_id, var_value in p_variables.items(): url += "&var-"+var_id+"="+var_value
         leaderboard = get_file(url)
         size = 0
         size =+ len(leaderboard["data"]["runs"])
@@ -227,48 +251,51 @@ def get_updated_user(p_user_ID, p_statusLabel):
 
     textOutput = ""
     if threadsException == []:
-        statusLabel.configure(text="Updating the leaderboard...")
-        debugstr = "\n"+str(user)
-        print(debugstr)
-
-        # Try and find the user by its ID
-        worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
-        row = 0
-        # As of 2017/07/16 with current code using searching by range is faster than col_values most of the time by up to 0.5s
-#        t1 = time.time()
-        row_count = worksheet.row_count
-        cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
-        for cell in cell_list:
-            if cell.value == user._ID:
-                row = cell.row
-                break
-#        t2 = time.time()
-#        row_count = 0
-#        cell_values_list = worksheet.col_values(COL_USERID)
-#        for value in cell_values_list:
-#            row_count += 1
-#            if value == user._ID: row = row_count
-#        t3 = time.time()
-#        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
-        timestamp = time.strftime("%Y/%m/%d %H:%M")
-        if row >= ROW_FIRST:
-            print("User " + user._ID + " found. Updating its cell.")
-            cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
-            cell_list[0].value = user._name
-            cell_list[1].value = user._points
-            cell_list[2].value = timestamp
-            worksheet.update_cells(cell_list)
-        # If user not found, add a row to the spreadsheet
-        else:
-            debugstr = "User ID " + user._ID + " not found. Adding a new row."
+        if user._points > 0: #TODO: once the database is full, move this in "# If user not found, add a row to the spreadsheet" (user should also be removed from spreadsheet)
+            statusLabel.configure(text="Updating the leaderboard...")
+            debugstr = "\n"+str(user)
             print(debugstr)
-            values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
-                      user._name,
-                      user._points,
-                      timestamp,
-                      user._ID]
-            worksheet.insert_row(values, index=row_count+1)
 
+            # Try and find the user by its ID
+            worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+            row = 0
+            # As of 2017/07/16 with current code using searching by range is faster than col_values most of the time by up to 0.5s
+    #        t1 = time.time()
+            row_count = worksheet.row_count
+            cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
+            for cell in cell_list:
+                if cell.value == user._ID:
+                    row = cell.row
+                    break
+    #        t2 = time.time()
+    #        row_count = 0
+    #        cell_values_list = worksheet.col_values(COL_USERID)
+    #        for value in cell_values_list:
+    #            row_count += 1
+    #            if value == user._ID: row = row_count
+    #        t3 = time.time()
+    #        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
+            timestamp = time.strftime("%Y/%m/%d %H:%M")
+            if row >= ROW_FIRST:
+                print("User " + user._ID + " found. Updating its cell.")
+                cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
+                cell_list[0].value = user._name
+                cell_list[1].value = user._points
+                cell_list[2].value = timestamp
+                worksheet.update_cells(cell_list)
+            # If user not found, add a row to the spreadsheet
+            else:
+                debugstr = "User ID " + user._ID + " not found. Adding a new row."
+                print(debugstr)
+                values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
+                          user._name,
+                          user._points,
+                          timestamp,
+                          user._ID]
+                worksheet.insert_row(values, index=row_count+1)
+        else:
+            textOutput = "Not updloading data as " + str(user) + " has a score of 0."
+            print(textOutput)
     else:
         errorStrList = []
         for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))
@@ -280,10 +307,10 @@ def get_updated_user(p_user_ID, p_statusLabel):
         textOutput += errorsStr
 
     statusLabel.configure(text="Done! "+("("+str(len(threadsException))+" error"+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
-    return(textOutput, textOutput)
+    return(textOutput)
 
 class AutoUpdateUsers(Thread):
-    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=14900"
+    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=0"
     paused = True
     global statusLabel
 

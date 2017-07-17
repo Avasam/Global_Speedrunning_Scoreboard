@@ -97,9 +97,9 @@ class User():
             url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25&max=200"
             PBs = get_file(url)
             if "status" in PBs.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
-            update_progress(0, len(PBs["data"]))
             self._points = 0
             valid_runs = {}
+            update_progress(0, len(PBs["data"]))
             for pb in PBs["data"]:
                 # Check if it's a valid run
                 if pb["run"]["category"] and not pb["run"]["level"] and pb["run"].get("videos"): # TODO?: allow runs that have levels, but no category?
@@ -109,10 +109,9 @@ class User():
                     # but we also don't want to check leaderboards specific to said variables as it'll return a leaderboard size way too small
                     if run.category in valid_runs:
                         valid_runs[run.category].place = min(valid_runs[run.category].place, run.place)
-                        update_progress(0, -1)
                     else: # ... else add it to the valid runs dict
                         valid_runs[run.category] = run
-                else: update_progress(0, -1)
+                update_progress(1, 0)
 
             # Compile the points for the runs
             threads = []
@@ -179,7 +178,7 @@ def update_progress(p_current, p_max):
     global statusLabel_max
     statusLabel_current += p_current
     statusLabel_max += p_max
-    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... ["+str(int(statusLabel_current/statusLabel_max*100))+"%] ("+str(statusLabel_current)+"/"+str(statusLabel_max)+")")
+    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... ["+str(int(statusLabel_current/statusLabel_max*100) or 0)+"%] ("+str(statusLabel_current)+"/"+str(statusLabel_max)+")")
 
 global worksheet
 worksheet = None
@@ -284,7 +283,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
     return(textOutput, textOutput)
 
 class AutoUpdateUsers(Thread):
-    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=400"
+    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=14900"
     paused = True
     global statusLabel
 

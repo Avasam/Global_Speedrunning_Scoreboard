@@ -201,7 +201,8 @@ def update_progress(p_current, p_max):
     global statusLabel_max
     statusLabel_current += p_current
     statusLabel_max += p_max
-    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... ["+str(int(statusLabel_current/statusLabel_max*100) or 0)+"%] ("+str(statusLabel_current)+"/"+str(statusLabel_max)+")")
+    percent = int(statusLabel_current/statusLabel_max*100) if statusLabel_max > 0 else 0
+    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... ["+str(percent)+"%] ("+str(statusLabel_current)+"/"+str(statusLabel_max)+")")
 
 global worksheet
 worksheet = None

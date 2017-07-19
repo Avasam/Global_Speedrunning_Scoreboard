@@ -4,9 +4,11 @@ A global leaderboard for competitive speedrunning
 Disclaimer: This is still in early testing and subject to drastic changes if needed.  
 Ex.: I may plan on making my own SQL database instead of using a Google Sheet or making the client a webservice.
 
-See the leaderboard: https://docs.google.com/spreadsheets/d/1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo#gid=518408346
-DOWNLOAD THE CLIENT: https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases  
+
+**See the leaderboard**: https://docs.google.com/spreadsheets/d/1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo#gid=518408346
+**DOWNLOAD THE CLIENT**: https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases  
 You can download this compiled version of the client to update any user you want.
+
 
 How the score is calculated:
 - The sum of every valid PB of a user is scored according to a formula. (see https://docs.google.com/spreadsheets/d/1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo#gid=1762022442)

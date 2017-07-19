@@ -4,7 +4,7 @@ A global leaderboard for competitive speedrunning
 Disclaimer: This is still in early testing and subject to drastic changes if needed.
 Ex.: I may plan on making my own SQL database instead of using a Google Sheet or making the client a webservice.
 
-DOWNLOAD THE CLIENT: 
+DOWNLOAD THE CLIENT: https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases
 You can download this compiled version of the client to update any user you want.
 
 How is the score calculated:

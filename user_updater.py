@@ -253,7 +253,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
     if threadsException == []:
         if user._points > 0: #TODO: once the database is full, move this in "# If user not found, add a row to the spreadsheet" (user should also be removed from spreadsheet)
             statusLabel.configure(text="Updating the leaderboard...")
-            debugstr = "\n"+str(user)
+            debugstr = "\nLooking for " + user._ID
             print(debugstr)
 
             # Try and find the user by its ID
@@ -277,7 +277,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
     #        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
             timestamp = time.strftime("%Y/%m/%d %H:%M")
             if row >= ROW_FIRST:
-                print("User " + user._ID + " found. Updating its cell.")
+                textOutput = "User " + str(user) + " found. Updated its cell."
                 cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
                 cell_list[0].value = user._name
                 cell_list[1].value = user._points
@@ -285,8 +285,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                 worksheet.update_cells(cell_list)
             # If user not found, add a row to the spreadsheet
             else:
-                debugstr = "User ID " + user._ID + " not found. Adding a new row."
-                print(debugstr)
+                textOutput = "User ID " + str(user) + " not found. Added a new row."
                 values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
                           user._name,
                           user._points,
@@ -295,7 +294,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                 worksheet.insert_row(values, index=row_count+1)
         else:
             textOutput = "Not updloading data as " + str(user) + " has a score of 0."
-            print(textOutput)
+            
     else:
         errorStrList = []
         for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))
@@ -303,9 +302,9 @@ def get_updated_user(p_user_ID, p_statusLabel):
         SEPARATOR = "-"*64
         errorsStr = SEPARATOR+"\nNot updloading data as some errors were caught during execution:\n"+SEPARATOR+"\n"
         for error, count in errorStrCounter.items(): errorsStr += "[x"+str(count)+"] "+str(error)+"\n"
-        print("[x"+str(count)+"] "+str(error)+"\n\n")
         textOutput += ("\n" if textOutput else "") + errorsStr
 
+    print(textOutput)
     statusLabel.configure(text="Done! "+("("+str(len(threadsException))+" error"+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
     return(textOutput)
 

@@ -32,22 +32,17 @@ import os.path
 ##    print("API_KEY not in sys._MEIPASS. Looking for file on local computer.")
 ##    try:
 ##        with open("C:\ProgramData\WCL report analyser\WCL_API_KEY.txt", mode="r") as f: API_KEY = f.readline()
-##    except FileNotFoundError as exception:
-##        raise AnalyserError({"error":"API_KEY not found", "details":exception})
 API_KEY = ""
 SPREADSHEET_ID = "1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo"
 scope = ["https://spreadsheets.google.com/feeds"]
 CREDENTIALS_PATH = None
 try:
-    CREDENTIALS = os.path.join(sys._MEIPASS,"JSON_CREDENTIALS.json")
+    CREDENTIALS_PATH = os.path.join(sys._MEIPASS,"JSON_CREDENTIALS.json")
 except AttributeError:
     print("CREDENTIALS not in sys._MEIPASS. Looking for file on local computer.")
-    CREDENTIALS = "C:\ProgramData\Speedrun.com (unofficial) global leaderboard\JSON_CREDENTIALS.json"
+    CREDENTIALS_PATH = "C:\ProgramData\speedrun.com (unofficial) global leaderboard\JSON_CREDENTIALS.json"
 finally:
-    try:
-        credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS, scope)
-    except FileNotFoundError as exception:
-        raise AnalyserError({"error":"CREDENTIALS not found", "details":exception})
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 
 COL_USERNAME = 2
 COL_POINTS = 3

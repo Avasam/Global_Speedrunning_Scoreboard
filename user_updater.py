@@ -21,6 +21,7 @@
 ## Contact:
 ## samuel.06@hotmail.com
 ###########################################################################
+import httplib2
 from CONSTANTS import *
 from collections import Counter
 import gspread
@@ -235,92 +236,100 @@ def get_updated_user(p_user_ID, p_statusLabel):
     global threadsException
     threadsException = []
 
-    #Check if already connected
-    if not (gs_client and worksheet):
+    try:
+        #Check if already connected
+        if not (gs_client and worksheet):
 
-	#Authentify to Google Sheets API
-        statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
-        try:
+            #Authentify to Google Sheets API
+            statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
             gs_client = gspread.authorize(credentials)
             print("https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID+"\n")
             worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
-        except gspread.exceptions.SpreadsheetNotFound:
-            raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID})
 
-    #Refresh credentials
-    gs_client.login()
+        #Refresh credentials
+        gs_client.login()
 
-    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait...")
-    user = User(p_user_ID)
-    debugstr = "-"*71+"\n"+user._name
-    print(debugstr)
+        statusLabel.configure(text="Fetching online data from speedrun.com. Please wait...")
+        user = User(p_user_ID)
+        debugstr = "-"*71+"\n"+user._name
+        print(debugstr)
 
-    threads = []
-    threads.append(Thread(target=user.set_code_and_name))
-    threads.append(Thread(target=user.set_points))
-    update_progress(0, len(threads))
-    for t in threads: t.start()
-    for t in threads: t.join()
-    update_progress(1, 0) # Because user.set_code_and_name() is too fast
+        threads = []
+        threads.append(Thread(target=user.set_code_and_name))
+        threads.append(Thread(target=user.set_points))
+        update_progress(0, len(threads))
+        for t in threads: t.start()
+        for t in threads: t.join()
+        update_progress(1, 0) # Because user.set_code_and_name() is too fast
 
-    textOutput = ""
-    if threadsException == []:
-        if user._points > 0: #TODO: once the database is full, move this in "# If user not found, add a row to the spreadsheet" (user should also be removed from spreadsheet)
-            statusLabel.configure(text="Updating the leaderboard...")
-            debugstr = "\nLooking for " + user._ID
-            print(debugstr)
+        textOutput = ""
+        if threadsException == []:
+            if user._points > 0: #TODO: once the database is full, move this in "# If user not found, add a row to the spreadsheet" (user should also be removed from spreadsheet)
+                statusLabel.configure(text="Updating the leaderboard...")
+                debugstr = "\nLooking for " + user._ID
+                print(debugstr)
 
-            # Try and find the user by its ID
-            worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
-            row = 0
-            # As of 2017/07/16 with current code using searching by range is faster than col_values most of the time by up to 0.5s
-    #        t1 = time.time()
-            row_count = worksheet.row_count
-            cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
-            for cell in cell_list:
-                if cell.value == user._ID:
-                    row = cell.row
-                    break
-    #        t2 = time.time()
-    #        row_count = 0
-    #        cell_values_list = worksheet.col_values(COL_USERID)
-    #        for value in cell_values_list:
-    #            row_count += 1
-    #            if value == user._ID: row = row_count
-    #        t3 = time.time()
-    #        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
-            timestamp = time.strftime("%Y/%m/%d %H:%M")
-            if row >= ROW_FIRST:
-                textOutput = "User " + str(user) + " found. Updated its cell."
-                cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
-                cell_list[0].value = user._name
-                cell_list[1].value = user._points
-                cell_list[2].value = timestamp
-                worksheet.update_cells(cell_list)
-            # If user not found, add a row to the spreadsheet
+                # Try and find the user by its ID
+                worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+                row = 0
+                # As of 2017/07/16 with current code using searching by range is faster than col_values most of the time by up to 0.5s
+        #        t1 = time.time()
+                row_count = worksheet.row_count
+                cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
+                for cell in cell_list:
+                    if cell.value == user._ID:
+                        row = cell.row
+                        break
+        #        t2 = time.time()
+        #        row_count = 0
+        #        cell_values_list = worksheet.col_values(COL_USERID)
+        #        for value in cell_values_list:
+        #            row_count += 1
+        #            if value == user._ID: row = row_count
+        #        t3 = time.time()
+        #        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
+                timestamp = time.strftime("%Y/%m/%d %H:%M")
+                if row >= ROW_FIRST:
+                    textOutput = str(user) + " found. Updated its cell."
+                    cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
+                    cell_list[0].value = user._name
+                    cell_list[1].value = user._points
+                    cell_list[2].value = timestamp
+                    worksheet.update_cells(cell_list)
+                # If user not found, add a row to the spreadsheet
+                else:
+                    textOutput = str(user) + " not found. Added a new row."
+                    values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
+                              user._name,
+                              user._points,
+                              timestamp,
+                              user._ID]
+                    worksheet.insert_row(values, index=row_count+1)
             else:
-                textOutput = "User ID " + str(user) + " not found. Added a new row."
-                values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
-                          user._name,
-                          user._points,
-                          timestamp,
-                          user._ID]
-                worksheet.insert_row(values, index=row_count+1)
+                textOutput = "Not updloading data as " + str(user) + " has a score of 0."
+                
         else:
-            textOutput = "Not updloading data as " + str(user) + " has a score of 0."
-            
-    else:
-        errorStrList = []
-        for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))
-        errorStrCounter = Counter(errorStrList)
-        SEPARATOR = "-"*64
-        errorsStr = SEPARATOR+"\nNot updloading data as some errors were caught during execution:\n"+SEPARATOR+"\n"
-        for error, count in errorStrCounter.items(): errorsStr += "[x"+str(count)+"] "+str(error)+"\n"
-        textOutput += ("\n" if textOutput else "") + errorsStr
+            errorStrList = []
+            for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))
+            errorStrCounter = Counter(errorStrList)
+            SEPARATOR = "-"*64
+            errorsStr = SEPARATOR+"\nNot updloading data as some errors were caught during execution:\n"+SEPARATOR+"\n"
+            for error, count in errorStrCounter.items(): errorsStr += "[x"+str(count)+"] "+str(error)+"\n"
+            textOutput += ("\n" if textOutput else "") + errorsStr
 
-    print(textOutput)
-    statusLabel.configure(text="Done! "+("("+str(len(threadsException))+" error"+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
-    return(textOutput)
+        print(textOutput)
+        statusLabel.configure(text="Done! "+("("+str(len(threadsException))+" error"+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
+        return(textOutput)
+    
+    except httplib2.ServerNotFoundError as exception:
+        raise UserUpdaterError({"error":"Server not found", "details":str(exception)+"\nPlease make sure you have a active internet connection"})
+    except (requests.exceptions.ChunkedEncodingError, ConnectionAbortedError) as exception:
+        raise UserUpdaterError({"error":"Connexion interrupted", "details":exception})
+    except gspread.exceptions.SpreadsheetNotFound:
+        raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID})
+    except requests.exceptions.ConnectionError as exception:
+        raise UserUpdaterError({"error":"Can't connect to Google Sheets", "details":exception})
+    
 
 #class AutoUpdateUsers(Thread):
 #    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=0"

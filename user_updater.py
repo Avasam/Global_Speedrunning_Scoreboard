@@ -53,6 +53,9 @@ class Run():
     def __str__(self):
         return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self.place)+"/"+str(self._leaderboard_size)+">"
 
+    def min_str(self):
+        return str(self.category)+str(self.variables)
+
     #TODO: currently a player can be penalized by runs w/o videos as the leaderboard size will shrink but not its rank
     def __set_leaderboard_size(self):
         self._leaderboard_size = get_leaderboard_size(self.game, self.category, self.variables)
@@ -84,7 +87,7 @@ class User():
         try:
             url = "http://www.speedrun.com/api/v1/users/"+self._ID
             infos = get_file(url)
-            if "status" in infos.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":infos["message"]})
+            if "status" in infos: raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":infos["message"]})
             if infos["data"]["role"] != "banned":
                 self._ID = infos["data"]["id"]
                 self._name = infos["data"]["names"].get("international")
@@ -99,6 +102,7 @@ class User():
             threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
 
     def set_points(self):
+        counted_runs = {}
         def set_points_thread(pb):
             try:
                 # Check if it's a valid run (has a category, isn't an IL, has video verification)
@@ -121,7 +125,11 @@ class User():
                             break
 
                     run = Run(pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["place"])
-                    self._points += run._points
+                    # Only keep the run's subcategory that's worth the most. This is to prevent abusing subcategories.
+                    if run.min_str() in counted_runs:
+                        counted_runs[run.min_str()] = max(counted_runs[run.min_str()], run._points)
+                    else:
+                        counted_runs[run.min_str()] = run._points
             except UserUpdaterError as exception:
                 threadsException.append(exception.args[0])
             except Exception as exception:
@@ -133,7 +141,7 @@ class User():
             if not self._banned:
                 url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25"
                 PBs = get_file(url)
-                if "status" in PBs.keys(): raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
+                if "status" in PBs: raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
                 self._points = 0
                 update_progress(0, len(PBs["data"]))
                 threads = []
@@ -141,6 +149,9 @@ class User():
                     threads.append(Thread(target=set_points_thread, args=(pb,)))
                 for t in threads: t.start()
                 for t in threads: t.join()
+                # Sum up the runs' score
+                for points in counted_runs.values():
+                    self._points += points
                 if self._banned: self._points = 0 # In case the banned flag has been set mid-thread
             else: self._points = 0
         except UserUpdaterError as exception:
@@ -193,7 +204,7 @@ def get_file(p_url):
 
     debugstr = str(type(data))+":"+str(data)
     if type(data) != dict: print(debugstr)
-    if "error" in data.keys(): raise UserUpdaterError({"error":data["status"], "details":data["error"]})
+    if "error" in data: raise UserUpdaterError({"error":data["status"], "details":data["error"]})
     return(data)
 
 def update_progress(p_current, p_max):

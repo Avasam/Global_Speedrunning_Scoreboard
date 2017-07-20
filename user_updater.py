@@ -65,10 +65,13 @@ class Run():
         # Check if the place is worth any point
         self.__set_leaderboard_size()
         print(self)
-        if self._leaderboard_size >= self.place and self._leaderboard_size >= MIN_LEADERBOARD_SIZE:
+        # Check to avoid errors
+        if self._leaderboard_size > self._place and self._leaderboard_size >= MIN_LEADERBOARD_SIZE and self._place > 0:
             # Give points according to the formula
-            formula_result = math.log(self._leaderboard_size-MIN_LEADERBOARD_SIZE+2) * (1/EXP_DECREASE_CONST) * math.exp(-(EXP_DECREASE_CONST*(self.place-1)))
-            self._points += min(self._leaderboard_size-self.place, math.floor(formula_result))
+            #ROUNDUP(MAX(0;LN(MAX(1;B$2-$D$34+2))*LN(MAX(1;(-$A3)+(B$2*$D$35+2)))*(1+$D$35/$A3)))
+            LN1 = math.log(self._leaderboard_size-MIN_LEADERBOARD_SIZE+2)
+            LN2 = math.log(max(1,-self._place+(self._leaderboard_size*MIN_RANK_PERCENT+2)))
+            self._points = math.ceil(max(0, LN1 * LN2 * (1+MIN_RANK_PERCENT/self._place)))
 
 class User():
     _points = 0
@@ -139,7 +142,7 @@ class User():
 
         try:
             if not self._banned:
-                url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests?top=25"
+                url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests"
                 PBs = get_file(url)
                 if "status" in PBs: raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
                 self._points = 0

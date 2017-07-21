@@ -36,35 +36,35 @@ class UserUpdaterError(Exception):
     """ raise UserUpdaterError({"error":"On Status Label", "details":"Details of error"}) """
     pass
 
+
 class Run():
+    ID = ""
     game = ""
     category = ""
     variables = {}
-    place = 0
+    _place = 0
     _points = 0
     __leaderboard_size = 0
 
-    def __init__(self, game, category, variables, place):
+    def __init__(self, ID, game, category, variables):
+        self.ID = ID
         self.game = game
         self.category = category
         self.variables = variables
-        self.place = place
         self.__set_points()
 
     def __str__(self):
-        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self.place)+"/"+str(self._leaderboard_size)+">"
+        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self._place)+"/"+str(self._leaderboard_size)+">"
 
     def min_str(self):
         return str(self.category)+str(self.variables)
 
-    #TODO: currently a player can be penalized by runs w/o videos as the leaderboard size will shrink but not its rank
-    def __set_leaderboard_size(self):
-        self._leaderboard_size = get_leaderboard_size(self.game, self.category, self.variables)
+    def __set_leaderboard_size_and_place(self):
+        self._leaderboard_size, self._place = get_leaderboard_size_and_rank(self.game, self.category, self.variables, self.ID)
 
     def __set_points(self):
         self._points = 0
-        # Check if the place is worth any point
-        self.__set_leaderboard_size()
+        self.__set_leaderboard_size_and_place()
         print(self)
         # Check to avoid errors
         if self._leaderboard_size > self._place and self._leaderboard_size >= MIN_LEADERBOARD_SIZE and self._place > 0:
@@ -128,7 +128,7 @@ class User():
                             pb_subcategory_variables[pb_var_id] = pb_var_value
                             break
 
-                    run = Run(pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["place"])
+                    run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables)
                     # Only keep the run's subcategory that's worth the most. This is to prevent abusing subcategories.
                     if run.min_str() in counted_runs:
                         counted_runs[run.min_str()] = max(counted_runs[run.min_str()], run._points)
@@ -166,18 +166,26 @@ class User():
             update_progress(1, 0)
 
 
-def get_leaderboard_size(p_game, p_category, p_variables):
+def get_leaderboard_size_and_rank(p_game, p_category, p_variables, p_run_id=None):
     try:
         url = "http://www.speedrun.com/api/v1/leaderboards/"+p_game+"/category/"+p_category+"?video-only=true"
         for var_id, var_value in p_variables.items(): url += "&var-"+var_id+"="+var_value
         leaderboard = get_file(url)
-        size = 0
-        size =+ len(leaderboard["data"]["runs"])
-        return size
+        # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
+        if p_run_id:
+            rank = -1
+            for run in leaderboard["data"]["runs"]:
+                if run["run"]["id"] == p_run_id and run["place"] > 0:
+                    rank = run["place"]
+                    break
+            return len(leaderboard["data"]["runs"]), rank
+        else:
+            return len(leaderboard["data"]["runs"])
     except UserUpdaterError as exception:
         threadsException.append(exception.args[0])
     except Exception as exception:
         threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
+
 
 def get_file(p_url):
     """
@@ -218,6 +226,7 @@ def update_progress(p_current, p_max):
     statusLabel_max += p_max
     percent = int(statusLabel_current/statusLabel_max*100) if statusLabel_max > 0 else 0
     statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... ["+str(percent)+"%] ("+str(statusLabel_current)+"/"+str(statusLabel_max)+")")
+
 
 global worksheet
 worksheet = None
@@ -272,7 +281,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                 # Try and find the user by its ID
                 worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
                 row = 0
-                # As of 2017/07/16 with current code using searching by range is faster than col_values most of the time by up to 0.5s
+                # As of 2017/07/16 with current code searching by range is faster than col_values most of the time by up to 0.5s
         #        t1 = time.time()
                 row_count = worksheet.row_count
                 cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
@@ -307,7 +316,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                     worksheet.insert_row(values, index=row_count+1)
             else:
                 textOutput = "Not updloading data as " + str(user) + " has a score of 0."
-                
+
         else:
             errorStrList = []
             for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))
@@ -320,7 +329,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
         print(textOutput)
         statusLabel.configure(text="Done! "+("("+str(len(threadsException))+" error"+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
         return(textOutput)
-    
+
     except httplib2.ServerNotFoundError as exception:
         raise UserUpdaterError({"error":"Server not found", "details":str(exception)+"\nPlease make sure you have a active internet connection"})
     except (requests.exceptions.ChunkedEncodingError, ConnectionAbortedError) as exception:
@@ -329,60 +338,60 @@ def get_updated_user(p_user_ID, p_statusLabel):
         raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID})
     except requests.exceptions.ConnectionError as exception:
         raise UserUpdaterError({"error":"Can't connect to Google Sheets", "details":exception})
-    
 
-#class AutoUpdateUsers(Thread):
-#    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=0"
-#    paused = True
-#    global statusLabel
-#
-#
-#    def __init__(self, p_statusLabel, **kwargs):
-#        Thread.__init__(self, **kwargs)
-#        self.statusLabel = p_statusLabel
-#
-#    def run(self):
-#        url = self.BASE_URL
-#        while True:
-#            self.__check_for_pause()
-#            self.statusLabel.configure(text="Auto-updating userbase...")
-#            users = get_file(url)
-#            for user in users["data"]:
-#                self.__check_for_pause()
-#                while True:
-#                    try:
-#                        try:
-#                            get_updated_user(user["id"], self.statusLabel)
-#                            break
-#                        except gspread.exceptions.RequestError as exception:
-#                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-#                                debugstr = str(exception.args[0])+". Retrying in "+str(HTTPERROR_RETRY_DELAY)+" seconds."
-#                                print(debugstr)
-#                                time.sleep(HTTPERROR_RETRY_DELAY)
-#                            else:
-#                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
-#                        except Exception:
-#                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
-#                    except UserUpdaterError as exception:
-#                        debugstr = "Skipping user "+user["id"]+". "+exception.args[0]["details"]
-#                        print(debugstr)
-#                        break
-#
-#
-#            link_found = False
-#            for link in users["pagination"]["links"]:
-#                if link["rel"] == "next":
-#                    url = link["uri"]
-#                    link_found = True
-#            if not link_found: url = self.BASE_URL
-#
-#    def __check_for_pause(self):
-#        while self.paused:
-#            pass
-#
-#def spam_test():
-#    def spam():
-#        get_file("http://www.speedrun.com/api/v1/users?max=2")
-#    while True:
-#        Thread(target=spam).start()
 
+#!Autoupdater
+##class AutoUpdateUsers(Thread):
+##    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=62400"
+##    paused = True
+##    global statusLabel
+##
+##    def __init__(self, p_statusLabel, **kwargs):
+##        Thread.__init__(self, **kwargs)
+##        self.statusLabel = p_statusLabel
+##
+##    def run(self):
+##        url = self.BASE_URL
+##        while True:
+##            self.__check_for_pause()
+##            self.statusLabel.configure(text="Auto-updating userbase...")
+##            users = get_file(url)
+##            for user in users["data"]:
+##                self.__check_for_pause()
+##                while True:
+##                    try:
+##                        try:
+##                            get_updated_user(user["id"], self.statusLabel)
+##                            break
+##                        except gspread.exceptions.RequestError as exception:
+##                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+##                                debugstr = str(exception.args[0])+". Retrying in "+str(HTTPERROR_RETRY_DELAY)+" seconds."
+##                                print(debugstr)
+##                                time.sleep(HTTPERROR_RETRY_DELAY)
+##                            else:
+##                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
+##                        except Exception:
+##                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
+##                    except UserUpdaterError as exception:
+##                        debugstr = "Skipping user "+user["id"]+". "+exception.args[0]["details"]
+##                        print(debugstr)
+##                        break
+##
+##
+##            link_found = False
+##            for link in users["pagination"]["links"]:
+##                if link["rel"] == "next":
+##                    url = link["uri"]
+##                    link_found = True
+##            if not link_found: url = self.BASE_URL
+##
+##    def __check_for_pause(self):
+##        while self.paused:
+##            pass
+##
+##
+##def spam_test():
+##    def spam():
+##        get_file("http://www.speedrun.com/api/v1/users?max=2")
+##    while True:
+##        Thread(target=spam).start()

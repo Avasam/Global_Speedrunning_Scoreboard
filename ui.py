@@ -120,27 +120,28 @@ text = Text(textFrame, state=DISABLED, yscrollcommand=scrollbar.set)
 text.pack(expand=YES, fill=BOTH)
 scrollbar.config(command=text.yview)
 
-##Must be after the statusLabel but before the auto_update_users_button
-#auto_update_users_thread = AutoUpdateUsers(statusLabel, name="Auto Update Users Thread")
-#auto_update_users_thread.start()
-#def pause_unpause_auto_update():
-#    if auto_update_users_thread.paused:
-#        auto_update_users_thread.paused = False
-#        auto_update_users_button.configure(text = "Pause auto-updating users")
-#    else:
-#        statusLabel.configure(text="Paused the automatic updating.")
-#        auto_update_users_thread.paused = True
-#        auto_update_users_button.configure(text = "Start auto-updating users")
 
 #Bottom Frame
 buttonsFrame = Frame(mainFrame, bg="darkred")
 buttonsFrame.pack(fill=X, padx=4, pady=4)
+
+#!Autoupdater
+##auto_update_users_thread = AutoUpdateUsers(statusLabel, name="Auto Update Users Thread")
+##auto_update_users_thread.start()
+##def pause_unpause_auto_update():
+##    if auto_update_users_thread.paused:
+##        auto_update_users_thread.paused = False
+##        auto_update_users_button.configure(text = "Pause auto-updating users")
+##    else:
+##        statusLabel.configure(text="Paused the automatic updating.")
+##        auto_update_users_thread.paused = True
+##        auto_update_users_button.configure(text = "Start auto-updating users")
+##auto_update_users_button = Button(buttonsFrame, text="Start auto-updating users", command=pause_unpause_auto_update)
+##auto_update_users_button.pack(side=LEFT, padx=(0,8))
+
 #Update User Button
 update_userButton = Button(buttonsFrame, text="Update runner", command=update_user)
 update_userButton.pack(side=LEFT, padx=(0,4))
-##Start/Pause Update Users Button
-#auto_update_users_button = Button(buttonsFrame, text="Start auto-updating users", command=pause_unpause_auto_update)
-#auto_update_users_button.pack(side=LEFT, padx=4)
 #Clipboard Button
 button = Button(buttonsFrame, text="Copy to clipboard", command=copy)
 button.pack(side=LEFT, padx=4)

@@ -22,6 +22,7 @@
 ## samuel.06@hotmail.com
 ###########################################################################
 import httplib2
+import oauth2client
 from CONSTANTS import *
 from collections import Counter
 import gspread
@@ -331,13 +332,15 @@ def get_updated_user(p_user_ID, p_statusLabel):
         return(textOutput)
 
     except httplib2.ServerNotFoundError as exception:
-        raise UserUpdaterError({"error":"Server not found", "details":str(exception)+"\nPlease make sure you have a active internet connection"})
+        raise UserUpdaterError({"error":"Server not found", "details":str(exception)+"\nPlease make sure you have an active internet connection"})
     except (requests.exceptions.ChunkedEncodingError, ConnectionAbortedError) as exception:
         raise UserUpdaterError({"error":"Connexion interrupted", "details":exception})
     except gspread.exceptions.SpreadsheetNotFound:
         raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID})
     except requests.exceptions.ConnectionError as exception:
         raise UserUpdaterError({"error":"Can't connect to Google Sheets", "details":exception})
+    except oauth2client.client.HttpAccessTokenRefreshError as exception:
+        raise UserUpdaterError({"error":"Authorization problems", "details":str(exception)+"\nThis version of the app may be outdated. Please see https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases"})
 
 
 #!Autoupdater

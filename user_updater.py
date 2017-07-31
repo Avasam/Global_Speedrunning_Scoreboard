@@ -31,7 +31,6 @@ import requests
 import time
 from threading import Thread
 import traceback
-import time
 
 class UserUpdaterError(Exception):
     """ raise UserUpdaterError({"error":"On Status Label", "details":"Details of error"}) """
@@ -55,9 +54,10 @@ class Run():
         self.__set_points()
 
     def __str__(self):
-        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self._place)+"/"+str(self._leaderboard_size)+">"
+        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self._place)+"/"+str(self._leaderboard_size)+": "+str(_points)+"pts>"
 
     def min_str(self):
+        """Shortest identifier to check for equivalence, NOT identity"""
         return str(self.category)+str(self.variables)
 
     def __set_leaderboard_size_and_place(self):
@@ -130,7 +130,8 @@ class User():
                             break
 
                     run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables)
-                    # Only keep the run's subcategory that's worth the most. This is to prevent abusing subcategories.
+                    # If a run has already been counted, only keep the one that's worth the most.
+                    # This can happen with multiple coop runs or runs with different subcategories.
                     if run.min_str() in counted_runs:
                         counted_runs[run.min_str()] = max(counted_runs[run.min_str()], run._points)
                     else:
@@ -281,23 +282,25 @@ def get_updated_user(p_user_ID, p_statusLabel):
 
                 # Try and find the user by its ID
                 worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+                print("slow from here")
                 row = 0
-                # As of 2017/07/16 with current code searching by range is faster than col_values most of the time by up to 0.5s
-        #        t1 = time.time()
+                # As of 2017/07/16 with current code searching by range is faster than col_values most of the time
+##                t1 = time.time()
                 row_count = worksheet.row_count
                 cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
                 for cell in cell_list:
                     if cell.value == user._ID:
                         row = cell.row
                         break
-        #        t2 = time.time()
-        #        row_count = 0
-        #        cell_values_list = worksheet.col_values(COL_USERID)
-        #        for value in cell_values_list:
-        #            row_count += 1
-        #            if value == user._ID: row = row_count
-        #        t3 = time.time()
-        #        print(debugstr = "range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + "seconds")
+##                t2 = time.time()
+##                row_count = 0
+##                cell_values_list = worksheet.col_values(COL_USERID)
+##                for value in cell_values_list:
+##                    row_count += 1
+##                    if value == user._ID: row = row_count
+##                t3 = time.time()
+##                print("range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + " seconds")
+##                print("worksheet.range itself took " + str(tr2-tr1) + " seconds")
                 timestamp = time.strftime("%Y/%m/%d %H:%M")
                 if row >= ROW_FIRST:
                     textOutput = str(user) + " found. Updated its cell."

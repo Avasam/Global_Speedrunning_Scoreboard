@@ -15,7 +15,7 @@ How the score is calculated:
 - Said formula gives you more points the closest to #1 you are on a leaderboard and the more players there are. Wich encourages having a good rank in games with a lot of players without having to be first (altough being in the top does give a lot of points because you have a lot more competition).
 - The only 2 arbritrary numbers are: 4 and 60%
     - 4 is the minimum amount of players that should be present in a leaderboard.
-	- 60% is the percentile cutoff after wichjust the exponential decay constant (I balance it to be the highest number to give a score of 1 when you're 20th/30)
+    - 60% minimum percentile needed in a leaderboard for a run to be worth any point.
 
 Individual levels are not considered atm (only full game runs).
 

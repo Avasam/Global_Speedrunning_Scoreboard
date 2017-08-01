@@ -54,14 +54,30 @@ class Run():
         self.__set_points()
 
     def __str__(self):
-        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self._place)+"/"+str(self._leaderboard_size)+": "+str(_points)+"pts>"
+        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self._place)+"/"+str(self._leaderboard_size)+">"
 
-    def min_str(self):
-        """Shortest identifier to check for equivalence, NOT identity"""
-        return str(self.category)+str(self.variables)
+    def get_leaderboard_size_and_rank(p_game, p_category, p_variables, p_run_id=None):
+        try:
+            url = "http://www.speedrun.com/api/v1/leaderboards/"+p_game+"/category/"+p_category+"?video-only=true"
+            for var_id, var_value in p_variables.items(): url += "&var-"+var_id+"="+var_value
+            leaderboard = get_file(url)
+            # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
+            if p_run_id:
+                rank = -1
+                for run in leaderboard["data"]["runs"]:
+                    if run["run"]["id"] == p_run_id and run["place"] > 0:
+                        rank = run["place"]
+                        break
+                return len(leaderboard["data"]["runs"]), rank
+            else:
+                return len(leaderboard["data"]["runs"])
+        except UserUpdaterError as exception:
+            threadsException.append(exception.args[0])
+        except Exception as exception:
+            threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
 
     def __set_leaderboard_size_and_place(self):
-        self._leaderboard_size, self._place = get_leaderboard_size_and_rank(self.game, self.category, self.variables, self.ID)
+        self._leaderboard_size, self._place = Run.get_leaderboard_size_and_rank(self.game, self.category, self.variables, self.ID)
 
     def __set_points(self):
         self._points = 0
@@ -127,15 +143,14 @@ class User():
                         if pb_var_id in game_subcategory_ids:
                             # ... and add it to the run's subcategory variables
                             pb_subcategory_variables[pb_var_id] = pb_var_value
-                            break
 
                     run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables)
-                    # If a run has already been counted, only keep the one that's worth the most.
-                    # This can happen with multiple coop runs or runs with different subcategories.
-                    if run.min_str() in counted_runs:
-                        counted_runs[run.min_str()] = max(counted_runs[run.min_str()], run._points)
+                    # If a category has already been counted, only keep the one that's worth the most.
+                    # This can happen in leaderboards with multiple coop runs or multiple subcategories.
+                    if run.category in counted_runs:
+                        counted_runs[run.category] = max(counted_runs[run.category], run._points)
                     else:
-                        counted_runs[run.min_str()] = run._points
+                        counted_runs[run.category] = run._points
             except UserUpdaterError as exception:
                 threadsException.append(exception.args[0])
             except Exception as exception:
@@ -147,7 +162,7 @@ class User():
             if not self._banned:
                 url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests"
                 PBs = get_file(url)
-                if "status" in PBs: raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":PBs["message"]})
+                if "status" in PBs: raise UserUpdaterError({"error":str(PBs["status"])+" (speedrun.com)", "details":PBs["message"]})
                 self._points = 0
                 update_progress(0, len(PBs["data"]))
                 threads = []
@@ -166,27 +181,6 @@ class User():
             threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
         finally:
             update_progress(1, 0)
-
-
-def get_leaderboard_size_and_rank(p_game, p_category, p_variables, p_run_id=None):
-    try:
-        url = "http://www.speedrun.com/api/v1/leaderboards/"+p_game+"/category/"+p_category+"?video-only=true"
-        for var_id, var_value in p_variables.items(): url += "&var-"+var_id+"="+var_value
-        leaderboard = get_file(url)
-        # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
-        if p_run_id:
-            rank = -1
-            for run in leaderboard["data"]["runs"]:
-                if run["run"]["id"] == p_run_id and run["place"] > 0:
-                    rank = run["place"]
-                    break
-            return len(leaderboard["data"]["runs"]), rank
-        else:
-            return len(leaderboard["data"]["runs"])
-    except UserUpdaterError as exception:
-        threadsException.append(exception.args[0])
-    except Exception as exception:
-        threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
 
 
 def get_file(p_url):

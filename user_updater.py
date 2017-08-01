@@ -54,12 +54,12 @@ class Run():
         self.__set_points()
 
     def __str__(self):
-        return "Run: <Game: "+self.game+", Category: "+self.category+", "+str(self._place)+"/"+str(self._leaderboard_size)+">"
+        return "Run: <Game: {}, Category: {}, {}/{}>".format(self.game, self.category, self._place, self._leaderboard_size)
 
     def get_leaderboard_size_and_rank(p_game, p_category, p_variables, p_run_id=None):
         try:
-            url = "http://www.speedrun.com/api/v1/leaderboards/"+p_game+"/category/"+p_category+"?video-only=true"
-            for var_id, var_value in p_variables.items(): url += "&var-"+var_id+"="+var_value
+            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/category/{category}?video-only=true".format(game=p_game, category=p_category)
+            for var_id, var_value in p_variables.items(): url += "&var-{id}={value}".format(id=var_id, value=var_value)
             leaderboard = get_file(url)
             # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
             if p_run_id:
@@ -102,18 +102,18 @@ class User():
         self._name = ID_or_name
 
     def __str__(self):
-        return "User: <" + self._name + ", " + str(self._points) + ", " + self._ID+">"
+        return "User: <{}, {}, {}>".format(self._name, self._points, self._ID)
 
     def set_code_and_name(self):
         try:
-            url = "http://www.speedrun.com/api/v1/users/"+self._ID
+            url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._ID)
             infos = get_file(url)
-            if "status" in infos: raise UserUpdaterError({"error":str(infos["status"])+" (speedrun.com)", "details":infos["message"]})
+            if "status" in infos: raise UserUpdaterError({"error":"{} (speedrun.com)".format(infos["status"]), "details":infos["message"]})
             if infos["data"]["role"] != "banned":
                 self._ID = infos["data"]["id"]
                 self._name = infos["data"]["names"].get("international")
                 japanese_name = infos["data"]["names"].get("japanese")
-                if japanese_name: self._name += " "+japanese_name
+                if japanese_name: self._name += " ({})".format(japanese_name)
             else:
                 self._banned = True
                 self._points = 0
@@ -129,7 +129,7 @@ class User():
                 # Check if it's a valid run (has a category, isn't an IL, has video verification)
                 if pb["run"]["category"] and not pb["run"]["level"] and pb["run"].get("videos"): # TODO?: allow runs for games that have levels, but no category?
                     #Get a list of the game's subcategory variables
-                    url = "http://www.speedrun.com/api/v1/games/"+pb["run"]["game"]+"/variables?max=200"
+                    url = "https://www.speedrun.com/api/v1/games/{game}/variables?max=200".format(game=pb["run"]["game"])
                     game_variables = get_file(url)
                     game_subcategory_ids = []
                     for game_variable in game_variables["data"]:
@@ -160,9 +160,9 @@ class User():
 
         try:
             if not self._banned:
-                url = "http://www.speedrun.com/api/v1/users/"+self._ID+"/personal-bests"
+                url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._ID)
                 PBs = get_file(url)
-                if "status" in PBs: raise UserUpdaterError({"error":str(PBs["status"])+" (speedrun.com)", "details":PBs["message"]})
+                if "status" in PBs: raise UserUpdaterError({"error":"{} (speedrun.com)".format(PBs["status"]), "details":PBs["message"]})
                 self._points = 0
                 update_progress(0, len(PBs["data"]))
                 threads = []
@@ -191,9 +191,7 @@ def get_file(p_url):
     ----------
     url : str   # The url to query
     """
-##    debugstr = p_url.replace(API_KEY, "****************************************")+"\n"
-    debugstr = "\n"+p_url
-    print(debugstr)
+    print("\n{}".format(p_url)) #debugstr
     while True:
         try:
             data = requests.get(p_url)
@@ -202,16 +200,13 @@ def get_file(p_url):
         except requests.exceptions.ConnectionError as exception:
             raise UserUpdaterError({"error":"Can't establish connexion to speedrun.com", "details":exception})
         except requests.exceptions.HTTPError as exception:
-            debugstr = exception.args[0]+". Retrying in "+str(HTTPERROR_RETRY_DELAY)+" seconds."
             if data.status_code in HTTP_RETRYABLE_ERRORS:
-                print(debugstr)
+                print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
                 time.sleep(HTTPERROR_RETRY_DELAY)
-            else: raise UserUpdaterError({"error":"HTTPError "+str(data.status_code), "details":exception.args[0]})
+            else: raise UserUpdaterError({"error":"HTTPError {}".format(data.status_code), "details":exception.args[0]})
 
     data = data.json()
-
-    debugstr = str(type(data))+":"+str(data)
-    if type(data) != dict: print(debugstr)
+    if type(data) != dict: print("{}:{}".format(type(data), data)) #debugstr
     if "error" in data: raise UserUpdaterError({"error":data["status"], "details":data["error"]})
     return(data)
 
@@ -221,7 +216,7 @@ def update_progress(p_current, p_max):
     statusLabel_current += p_current
     statusLabel_max += p_max
     percent = int(statusLabel_current/statusLabel_max*100) if statusLabel_max > 0 else 0
-    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... ["+str(percent)+"%] ("+str(statusLabel_current)+"/"+str(statusLabel_max)+")")
+    statusLabel.configure(text="Fetching online data from speedrun.com. Please wait... [{}%] ({}/{})".format(percent, statusLabel_current, statusLabel_max))
 
 
 global worksheet
@@ -240,24 +235,24 @@ def get_updated_user(p_user_ID, p_statusLabel):
     global gs_client
     global threadsException
     threadsException = []
+    textOutput = p_user_ID
 
     try:
-        #Check if already connected
+        # Check if already connected
         if not (gs_client and worksheet):
 
             #Authentify to Google Sheets API
             statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
             gs_client = gspread.authorize(credentials)
-            print("https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID+"\n")
+            print("https://docs.google.com/spreadsheets/d/{spreadsheet}\n".format(spreadsheet=SPREADSHEET_ID))
             worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
 
-        #Refresh credentials
+        # Refresh credentials
         gs_client.login()
 
         statusLabel.configure(text="Fetching online data from speedrun.com. Please wait...")
         user = User(p_user_ID)
-        debugstr = "-"*71+"\n"+user._name
-        print(debugstr)
+        print("{}\n{}".format(SEPARATOR, user._name)) #debugstr
 
         threads = []
         threads.append(Thread(target=user.set_code_and_name))
@@ -267,21 +262,20 @@ def get_updated_user(p_user_ID, p_statusLabel):
         for t in threads: t.join()
         update_progress(1, 0) # Because user.set_code_and_name() is too fast
 
-        textOutput = ""
         if threadsException == []:
             if user._points > 0: #TODO: once the database is full, move this in "# If user not found, add a row to the spreadsheet" (user should also be removed from spreadsheet)
                 statusLabel.configure(text="Updating the leaderboard...")
-                debugstr = "\nLooking for " + user._ID
-                print(debugstr)
+                print("\nLooking for {}".format(user._ID)) #debugstr
 
                 # Try and find the user by its ID
                 worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
-                print("slow from here")
                 row = 0
                 # As of 2017/07/16 with current code searching by range is faster than col_values most of the time
 ##                t1 = time.time()
                 row_count = worksheet.row_count
+                print("slow call to GSheets")
                 cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
+                print("slow call done")
                 for cell in cell_list:
                     if cell.value == user._ID:
                         row = cell.row
@@ -293,11 +287,11 @@ def get_updated_user(p_user_ID, p_statusLabel):
 ##                    row_count += 1
 ##                    if value == user._ID: row = row_count
 ##                t3 = time.time()
-##                print("range took    : " + str(t2-t1) + "seconds\ncol_values took: "+ str(t3-t2) + " seconds")
-##                print("worksheet.range itself took " + str(tr2-tr1) + " seconds")
+##                print("range took    : {} seconds\ncol_values took: {} seconds".format(t2-t1, t3-t2))
+##                print("worksheet.range itself took {} seconds".format(tr2-tr1))
                 timestamp = time.strftime("%Y/%m/%d %H:%M")
                 if row >= ROW_FIRST:
-                    textOutput = str(user) + " found. Updated its cell."
+                    textOutput = "{} found. Updated its cell.".format(user)
                     cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
                     cell_list[0].value = user._name
                     cell_list[1].value = user._points
@@ -305,93 +299,83 @@ def get_updated_user(p_user_ID, p_statusLabel):
                     worksheet.update_cells(cell_list)
                 # If user not found, add a row to the spreadsheet
                 else:
-                    textOutput = str(user) + " not found. Added a new row."
-                    values = ["=IF($C"+str(row_count+1)+"<$C"+str(row_count)+";$A"+str(row_count)+"+1;$A"+str(row_count)+")",
+                    textOutput = "{} not found. Added a new row.".format(user)
+                    values = ["=IF($C{1}=$C{0};$A{0};ROW()-3)".format(row_count, row_count+1),
                               user._name,
                               user._points,
                               timestamp,
                               user._ID]
                     worksheet.insert_row(values, index=row_count+1)
             else:
-                textOutput = "Not updloading data as " + str(user) + " has a score of 0."
+                textOutput = "Not updloading data as {} has a score of 0.".format(user)
 
         else:
             errorStrList = []
-            for e in threadsException: errorStrList.append("Error: "+str(e["error"])+"\n"+str(e["details"]))
+            for e in threadsException: errorStrList.append("Error: {}\n{}".format(e["error"], e["details"]))
             errorStrCounter = Counter(errorStrList)
-            SEPARATOR = "-"*64
-            errorsStr = SEPARATOR+"\nNot updloading data as some errors were caught during execution:\n"+SEPARATOR+"\n"
-            for error, count in errorStrCounter.items(): errorsStr += "[x"+str(count)+"] "+str(error)+"\n"
+            errorsStr = "{0}\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
+            for error, count in errorStrCounter.items(): errorsStr += "[x{}] {}\n".format(count, error)
             textOutput += ("\n" if textOutput else "") + errorsStr
 
         print(textOutput)
-        statusLabel.configure(text="Done! "+("("+str(len(threadsException))+" error"+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
+        statusLabel.configure(text="Done! "+("({} error".format(len(threadsException))+("s" if len(threadsException) > 1 else "")+")" if threadsException != [] else ""))
         return(textOutput)
 
     except httplib2.ServerNotFoundError as exception:
-        raise UserUpdaterError({"error":"Server not found", "details":str(exception)+"\nPlease make sure you have an active internet connection"})
+        raise UserUpdaterError({"error":"Server not found", "details":"{}\nPlease make sure you have an active internet connection".format(exception)})
     except (requests.exceptions.ChunkedEncodingError, ConnectionAbortedError) as exception:
         raise UserUpdaterError({"error":"Connexion interrupted", "details":exception})
     except gspread.exceptions.SpreadsheetNotFound:
-        raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/"+SPREADSHEET_ID})
+        raise UserUpdaterError({"error":"Spreadsheet not found", "details":"https://docs.google.com/spreadsheets/d/{spreadsheet}".format(spreadsheet=SPREADSHEET_ID)})
     except requests.exceptions.ConnectionError as exception:
         raise UserUpdaterError({"error":"Can't connect to Google Sheets", "details":exception})
     except oauth2client.client.HttpAccessTokenRefreshError as exception:
-        raise UserUpdaterError({"error":"Authorization problems", "details":str(exception)+"\nThis version of the app may be outdated. Please see https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases"})
+        raise UserUpdaterError({"error":"Authorization problems", "details":"{}\nThis version of the app may be outdated. Please see https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases".format(exception)})
 
 
 #!Autoupdater
-##class AutoUpdateUsers(Thread):
-##    BASE_URL = "http://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=62400"
-##    paused = True
-##    global statusLabel
-##
-##    def __init__(self, p_statusLabel, **kwargs):
-##        Thread.__init__(self, **kwargs)
-##        self.statusLabel = p_statusLabel
-##
-##    def run(self):
-##        url = self.BASE_URL
-##        while True:
-##            self.__check_for_pause()
-##            self.statusLabel.configure(text="Auto-updating userbase...")
-##            users = get_file(url)
-##            for user in users["data"]:
-##                self.__check_for_pause()
-##                while True:
-##                    try:
-##                        try:
-##                            get_updated_user(user["id"], self.statusLabel)
-##                            break
-##                        except gspread.exceptions.RequestError as exception:
-##                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-##                                debugstr = str(exception.args[0])+". Retrying in "+str(HTTPERROR_RETRY_DELAY)+" seconds."
-##                                print(debugstr)
-##                                time.sleep(HTTPERROR_RETRY_DELAY)
-##                            else:
-##                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
-##                        except Exception:
-##                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
-##                    except UserUpdaterError as exception:
-##                        debugstr = "Skipping user "+user["id"]+". "+exception.args[0]["details"]
-##                        print(debugstr)
-##                        break
-##
-##
-##            link_found = False
-##            for link in users["pagination"]["links"]:
-##                if link["rel"] == "next":
-##                    url = link["uri"]
-##                    link_found = True
-##            if not link_found: url = self.BASE_URL
-##
-##    def __check_for_pause(self):
-##        while self.paused:
-##            pass
-##
-##
-##def spam_test():
-##    def spam():
-##        get_file("http://www.speedrun.com/api/v1/users?max=2")
-##    while True:
-##        Thread(target=spam).start()
+class AutoUpdateUsers(Thread):
+    BASE_URL = "https://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=0"
+    paused = True
+    global statusLabel
+
+    def __init__(self, p_statusLabel, **kwargs):
+        Thread.__init__(self, **kwargs)
+        self.statusLabel = p_statusLabel
+
+    def run(self):
+        url = self.BASE_URL
+        while True:
+            self.__check_for_pause()
+            self.statusLabel.configure(text="Auto-updating userbase...")
+            users = get_file(url)
+            for user in users["data"]:
+                self.__check_for_pause()
+                while True:
+                    try:
+                        try:
+                            get_updated_user(user["id"], self.statusLabel)
+                            break
+                        except gspread.exceptions.RequestError as exception:
+                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+                                print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
+                                time.sleep(HTTPERROR_RETRY_DELAY)
+                            else:
+                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
+                        except Exception:
+                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
+                    except UserUpdaterError as exception:
+                        print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"])) #debugstr
+                        break
+
+
+            link_found = False
+            for link in users["pagination"]["links"]:
+                if link["rel"] == "next":
+                    url = link["uri"]
+                    link_found = True
+            if not link_found: url = self.BASE_URL
+
+    def __check_for_pause(self):
+        while self.paused:
+            pass

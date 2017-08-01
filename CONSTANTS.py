@@ -44,12 +44,13 @@ except AttributeError:
 finally:
     credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 
+SEPARATOR = "-"*64
+
 COL_USERNAME = 2
 COL_POINTS = 3
 COL_LAST_UPDATE = 4
 COL_USERID = 5
 ROW_FIRST = 3
-
 MIN_LEADERBOARD_SIZE = 4
 MIN_RANK_PERCENT = 60/100
 

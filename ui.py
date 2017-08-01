@@ -48,7 +48,7 @@ defaultCode = "Vallu"
 def write_text(s):
     text.configure(state=NORMAL)
     text.delete('1.0', END)
-    text.insert(INSERT, s)
+    text.insert(INSERT, str(s))
     text.configure(state=DISABLED)
 
 def show_help():
@@ -63,11 +63,11 @@ def update_user_thread(p_code, p_statusLabel):
         result = get_updated_user(p_code, p_statusLabel)
         write_text(result)
     except UserUpdaterError as exception:
-        print("\n"+exception.args[0]["error"]+"\n"+str(exception.args[0]["details"]))
-        statusLabel.configure(text=("Error: " + exception.args[0]["error"]))
+        print("\n{}\n{}".format(exception.args[0]["error"], exception.args[0]["details"]))
+        statusLabel.configure(text=("Error: {}".format(exception.args[0]["error"])))
         write_text(exception.args[0]["details"])
     except Exception as exception:
-        print("\n"+"Error: Unknown "+"\n"+traceback.format_exc())
+        print("\nError: Unknown\n{}".format(traceback.format_exc()))
         statusLabel.configure(text=("Error: Unknown"))
         write_text(traceback.format_exc())
     update_userButton.configure(state=NORMAL)
@@ -78,7 +78,6 @@ def copy():
 
 def copyleft():
     write_text(LICENSE)
-
 
 
 #Main Frame to create border spacing

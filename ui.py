@@ -60,13 +60,12 @@ def update_user():
 
 def update_user_thread(p_code, p_statusLabel):
     try:
-        try:
-            result = get_updated_user(p_code, p_statusLabel)
-            write_text(result)
-        except UserUpdaterError as exception:
-            print("\n"+exception.args[0]["error"]+"\n"+str(exception.args[0]["details"]))
-            statusLabel.configure(text=("Error: " + exception.args[0]["error"]))
-            write_text(exception.args[0]["details"])
+        result = get_updated_user(p_code, p_statusLabel)
+        write_text(result)
+    except UserUpdaterError as exception:
+        print("\n"+exception.args[0]["error"]+"\n"+str(exception.args[0]["details"]))
+        statusLabel.configure(text=("Error: " + exception.args[0]["error"]))
+        write_text(exception.args[0]["details"])
     except Exception as exception:
         print("\n"+"Error: Unknown "+"\n"+traceback.format_exc())
         statusLabel.configure(text=("Error: Unknown"))

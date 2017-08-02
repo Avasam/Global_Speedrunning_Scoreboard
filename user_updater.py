@@ -368,7 +368,6 @@ class AutoUpdateUsers(Thread):
                         print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"])) #debugstr
                         break
 
-
             link_found = False
             for link in users["pagination"]["links"]:
                 if link["rel"] == "next":

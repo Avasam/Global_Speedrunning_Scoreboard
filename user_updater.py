@@ -238,6 +238,10 @@ def get_updated_user(p_user_ID, p_statusLabel):
     textOutput = p_user_ID
 
     try:
+        # Send to Webapp
+        def send_to_webapp(p_user): requests.post("https://avasam.pythonanywhere.com/", data = {"action": "update-user", "name-or-id": p_user})
+        Thread(target=send_to_webapp, args=(p_user_ID,)).start()
+
         # Check if already connected
         if not (gs_client and worksheet):
 

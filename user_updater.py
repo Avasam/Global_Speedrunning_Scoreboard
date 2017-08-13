@@ -94,6 +94,7 @@ class Run():
 class User():
     _points = 0
     _name = ""
+    _weblink = ""
     _ID = ""
     _banned = False
 
@@ -111,6 +112,7 @@ class User():
             if "status" in infos: raise UserUpdaterError({"error":"{} (speedrun.com)".format(infos["status"]), "details":infos["message"]})
             if infos["data"]["role"] != "banned":
                 self._ID = infos["data"]["id"]
+                self._weblink = infos["data"]["weblink"]
                 self._name = infos["data"]["names"].get("international")
                 japanese_name = infos["data"]["names"].get("japanese")
                 if japanese_name: self._name += " ({})".format(japanese_name)
@@ -258,9 +260,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
         user = User(p_user_ID)
         print("{}\n{}".format(SEPARATOR, user._name)) #debugstr
 
-        threads = []
-        threads.append(Thread(target=user.set_code_and_name))
-        threads.append(Thread(target=user.set_points))
+        threads = [Thread(target=user.set_code_and_name), Thread(target=user.set_points)]
         update_progress(0, len(threads))
         for t in threads: t.start()
         for t in threads: t.join()
@@ -294,10 +294,11 @@ def get_updated_user(p_user_ID, p_statusLabel):
 ##                print("range took    : {} seconds\ncol_values took: {} seconds".format(t2-t1, t3-t2))
 ##                print("worksheet.range itself took {} seconds".format(tr2-tr1))
                 timestamp = time.strftime("%Y/%m/%d %H:%M")
+                linked_name = "=HYPERLINK(\"{}\";\"{}\")".format(user._weblink, user._name)
                 if row >= ROW_FIRST:
                     textOutput = "{} found. Updated its cell.".format(user)
                     cell_list = worksheet.range(row, COL_USERNAME, row, COL_LAST_UPDATE)
-                    cell_list[0].value = user._name
+                    cell_list[0].value = linked_name
                     cell_list[1].value = user._points
                     cell_list[2].value = timestamp
                     worksheet.update_cells(cell_list)
@@ -305,7 +306,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                 else:
                     textOutput = "{} not found. Added a new row.".format(user)
                     values = ["=IF($C{1}=$C{0};$A{0};ROW()-3)".format(row_count, row_count+1),
-                              user._name,
+                              linked_name,
                               user._points,
                               timestamp,
                               user._ID]

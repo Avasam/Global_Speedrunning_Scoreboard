@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###########################################################################
-## Speedrun.com (unofficial) Global leaderboard
+## Ava's Global speedrunning leaderboard
 ## Copyright (C) 2017 Samuel Therrien
 ##
 ## This program is free software: you can redistribute it and/or modify
@@ -355,7 +355,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
     except requests.exceptions.ConnectionError as exception:
         raise UserUpdaterError({"error":"Can't connect to Google Sheets", "details":exception})
     except oauth2client.client.HttpAccessTokenRefreshError as exception:
-        raise UserUpdaterError({"error":"Authorization problems", "details":"{}\nThis version of the app may be outdated. Please see https://github.com/Avasam/speedrun.com_-unofficial-_global_leaderboard/releases".format(exception)})
+        raise UserUpdaterError({"error":"Authorization problems", "details":"{}\nThis version of the app may be outdated. Please see https://github.com/Avasam/Global_speedrunning_leaderboard/releases".format(exception)})
 
 
 #!Autoupdater

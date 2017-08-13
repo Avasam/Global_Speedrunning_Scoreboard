@@ -1,5 +1,5 @@
-# speedrun.com_-unofficial-_global_leaderboard
-A global leaderboard for competitive speedrunning
+# Ava's Global speedrunning leaderboard
+A global leaderboard for competitive speedrunning powered by speedrun.com
 
 Disclaimer: This is still in early testing and subject to drastic changes if needed.  
 Ex.: I'm planning of making this an actual webap with its own SQL database rather than a client connecting to GSheets.

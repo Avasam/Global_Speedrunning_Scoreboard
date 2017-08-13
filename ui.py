@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###########################################################################
-## Speedrun.com (unofficial) Global leaderboard
+## Ava's Global speedrunning leaderboard
 ## Copyright (C) 2017 Samuel Therrien
 ##
 ## This program is free software: you can redistribute it and/or modify
@@ -39,8 +39,8 @@ def resource_path(relative_path):
 with open(resource_path("LICENSE.txt"), "r") as f: LICENSE = f.read()
 with open(resource_path("README.md"), "r") as f: README = f.read()
 window = Tk()
-window.iconbitmap(resource_path("icon.ico"))
-window.title("Speedrun.com (unofficial) global leaderboard")
+window.iconbitmap(resource_path("favicon.ico"))
+window.title("Global speedrunning leaderboard")
 window.geometry("664x264")
 #window.minsize(foo, bar)
 defaultCode = "Vallu"

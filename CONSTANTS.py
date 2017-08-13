@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###########################################################################
-## Speedrun.com (unofficial) Global leaderboard
+## Ava's Global speedrunning leaderboard
 ## Copyright (C) 2017 Samuel Therrien
 ##
 ## This program is free software: you can redistribute it and/or modify
@@ -40,7 +40,7 @@ try:
     CREDENTIALS_PATH = os.path.join(sys._MEIPASS,"JSON_CREDENTIALS.json")
 except AttributeError:
     print("CREDENTIALS not in sys._MEIPASS. Looking for file on local computer.")
-    CREDENTIALS_PATH = "C:\ProgramData\speedrun.com (unofficial) global leaderboard\JSON_CREDENTIALS.json"
+    CREDENTIALS_PATH = "C:\ProgramData\Global speedrunning leaderboard\JSON_CREDENTIALS.json"
 finally:
     credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 

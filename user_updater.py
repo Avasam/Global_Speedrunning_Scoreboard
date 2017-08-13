@@ -97,6 +97,7 @@ class User():
     _weblink = ""
     _ID = ""
     _banned = False
+    _point_distribution_str = ""
 
     def __init__(self, ID_or_name):
         self._ID = ID_or_name
@@ -173,8 +174,10 @@ class User():
                 for t in threads: t.start()
                 for t in threads: t.join()
                 # Sum up the runs' score
-                for points in counted_runs.values():
+                self._point_distribution_str="\nCategory | Points\n-------- | ------".format(self._name)
+                for category, points in counted_runs.items():
                     self._points += points
+                    self._point_distribution_str+="\n{} | {}".format(category, math.ceil(points*10)/10)
                 if self._banned: self._points = 0 # In case the banned flag has been set mid-thread
             else: self._points = 0
         except UserUpdaterError as exception:
@@ -311,6 +314,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                               timestamp,
                               user._ID]
                     worksheet.insert_row(values, index=row_count+1)
+                textOutput += user._point_distribution_str
             else:
                 textOutput = "Not updloading data as {} has a score of 0.".format(user)
 

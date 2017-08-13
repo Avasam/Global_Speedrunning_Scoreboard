@@ -70,13 +70,13 @@ class Run():
 
             # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
             self._leaderboard_size = len(leaderboard["data"]["runs"])
-            rank = -1
-            # Check to avoid useless computation and request
-            if self._leaderboard_size >= MIN_LEADERBOARD_SIZE :
+            rank = 0
+            if self._leaderboard_size >= MIN_LEADERBOARD_SIZE : # Check to avoid useless computation and request
                 for run in leaderboard["data"]["runs"]:
+                    rank += 1
                     if run["run"]["id"] == self.ID and run["place"] > 0:
-                        rank = run["place"]
                         break
+                else: rank = -1
                 self._place = rank
 
                 # If the run is an Individual Level and worth looking at, set the level count

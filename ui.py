@@ -43,7 +43,7 @@ window.iconbitmap(resource_path("favicon.ico"))
 window.title("Global speedrunning leaderboard")
 window.geometry("664x264")
 #window.minsize(foo, bar)
-defaultCode = "Vallu"
+defaultCode = "Avasam"
 
 def write_text(s):
     text.configure(state=NORMAL)

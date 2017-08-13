@@ -42,42 +42,55 @@ class Run():
     game = ""
     category = ""
     variables = {}
+    level = ""
+    level_count = 0
     _place = 0
     _points = 0
-    __leaderboard_size = 0
+    _leaderboard_size = 0
 
-    def __init__(self, ID, game, category, variables):
+    def __init__(self, ID, game, category, variables={}, level=""):
         self.ID = ID
         self.game = game
         self.category = category
         self.variables = variables
+        self.level = level
         self.__set_points()
 
     def __str__(self):
-        return "Run: <Game: {}, Category: {}, {}/{}>".format(self.game, self.category, self._place, self._leaderboard_size)
+        level_str = "Level: {}, ".format(self.level) if self.level else ""
+        return "Run: <Game: {}, Category: {}, {}{}/{} ÷{}>".format(self.game, self.category, level_str, self._place, self._leaderboard_size, self.level_count+1)
 
-    def get_leaderboard_size_and_rank(p_game, p_category, p_variables, p_run_id=None):
+    def __set_leaderboard_size_and_place(self):
         try:
-            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/category/{category}?video-only=true".format(game=p_game, category=p_category)
-            for var_id, var_value in p_variables.items(): url += "&var-{id}={value}".format(id=var_id, value=var_value)
+            # If the run is an Individual Level, adapt the request url
+            lvl_cat_str = "level/{level}/".format(level=self.level) if self.level else "category/"
+            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/{lvl_cat_str}{category}?video-only=true".format(game=self.game, lvl_cat_str=lvl_cat_str, category=self.category)
+            for var_id, var_value in self.variables.items(): url += "&var-{id}={value}".format(id=var_id, value=var_value)
             leaderboard = get_file(url)
+
             # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
-            if p_run_id:
-                rank = -1
+            self._leaderboard_size = len(leaderboard["data"]["runs"])
+            rank = -1
+            # Check to avoid useless computation and request
+            if self._leaderboard_size >= MIN_LEADERBOARD_SIZE :
                 for run in leaderboard["data"]["runs"]:
-                    if run["run"]["id"] == p_run_id and run["place"] > 0:
+                    if run["run"]["id"] == self.ID and run["place"] > 0:
                         rank = run["place"]
                         break
-                return len(leaderboard["data"]["runs"]), rank
-            else:
-                return len(leaderboard["data"]["runs"])
+                self._place = rank
+
+                # If the run is an Individual Level and worth looking at, set the level count
+                if self.level and self._place/self._leaderboard_size <= MIN_RANK_PERCENT:
+                    # DO NOT THREAD THIS, we even wait on purpose
+                    time.sleep(0.5)
+                    url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
+                    levels = get_file(url)
+                    self.level_count = len(levels["data"])
+
         except UserUpdaterError as exception:
             threadsException.append(exception.args[0])
         except Exception as exception:
             threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
-
-    def __set_leaderboard_size_and_place(self):
-        self._leaderboard_size, self._place = Run.get_leaderboard_size_and_rank(self.game, self.category, self.variables, self.ID)
 
     def __set_points(self):
         self._points = 0
@@ -89,7 +102,7 @@ class Run():
             #ROUNDUP(MAX(0;LN(MAX(1;B$2-$D$34+2))*LN(MAX(1;(-$A3)+(B$2*$D$35+2)))*(1+$D$35/$A3)))
             LN1 = math.log(self._leaderboard_size-MIN_LEADERBOARD_SIZE+2)
             LN2 = math.log(max(1,-self._place+(self._leaderboard_size*MIN_RANK_PERCENT+2)))
-            self._points = math.ceil(max(0, LN1 * LN2 * (1+MIN_RANK_PERCENT/self._place)))
+            self._points = max(0, LN1 * LN2 * (1+MIN_RANK_PERCENT/self._place)) / (self.level_count+1)
 
 class User():
     _points = 0
@@ -129,8 +142,9 @@ class User():
         counted_runs = {}
         def set_points_thread(pb):
             try:
-                # Check if it's a valid run (has a category, isn't an IL, has video verification)
-                if pb["run"]["category"] and not pb["run"]["level"] and pb["run"].get("videos"): # TODO?: allow runs for games that have levels, but no category?
+                # Check if it's a valid run (has a category AND has video verification)
+                level_count = 0
+                if pb["run"]["category"] and pb["run"].get("videos"):
                     #Get a list of the game's subcategory variables
                     url = "https://www.speedrun.com/api/v1/games/{game}/variables?max=200".format(game=pb["run"]["game"])
                     game_variables = get_file(url)
@@ -147,13 +161,14 @@ class User():
                             # ... and add it to the run's subcategory variables
                             pb_subcategory_variables[pb_var_id] = pb_var_value
 
-                    run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables)
+                    run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["run"]["level"])
                     # If a category has already been counted, only keep the one that's worth the most.
                     # This can happen in leaderboards with multiple coop runs or multiple subcategories.
-                    if run.category in counted_runs:
-                        counted_runs[run.category] = max(counted_runs[run.category], run._points)
-                    else:
-                        counted_runs[run.category] = run._points
+                    if run._points > 0:
+                        if run.category in counted_runs:
+                            counted_runs[run.category] = max(counted_runs[run.category], run._points)
+                        else:
+                            counted_runs[run.category] = run._points
             except UserUpdaterError as exception:
                 threadsException.append(exception.args[0])
             except Exception as exception:
@@ -179,6 +194,7 @@ class User():
                     self._points += points
                     self._point_distribution_str+="\n{} | {}".format(category, math.ceil(points*10)/10)
                 if self._banned: self._points = 0 # In case the banned flag has been set mid-thread
+                else: self._points = math.ceil(self._points)
             else: self._points = 0
         except UserUpdaterError as exception:
             threadsException.append(exception.args[0])

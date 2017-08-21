@@ -68,15 +68,26 @@ class Run():
             for var_id, var_value in self.variables.items(): url += "&var-{id}={value}".format(id=var_id, value=var_value)
             leaderboard = get_file(url)
 
-            # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally showed
+            # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally shown
             self._leaderboard_size = len(leaderboard["data"]["runs"])
             rank = 0
             if self._leaderboard_size >= MIN_LEADERBOARD_SIZE : # Check to avoid useless computation and request
+                previous_time = leaderboard["data"]["runs"][0]["run"]["times"]["primary_t"]
+                is_speedrun = False
+                found = False
                 for run in leaderboard["data"]["runs"]:
-                    rank += 1
-                    if run["run"]["id"] == self.ID and run["place"] > 0:
-                        break
-                else: rank = -1
+                    if is_speedrun and found: break # No need to keep looking
+
+                    # Making sure this is a speedrun and not a score leaderboard
+                    if not is_speedrun: # To avoid false negatives due to missing primary times, stop comparing once we know it's a speedrun
+                        if run["run"]["times"]["primary_t"] < previous_time: break # No need to keep looking
+                        elif run["run"]["times"]["primary_t"] > previous_time: is_speedrun = True
+
+                    if not found:
+                        rank += 1
+                        if run["run"]["id"] == self.ID and run["place"] > 0:
+                            found = True
+                if not (is_speedrun and found): rank = -1
                 self._place = rank
 
                 # If the run is an Individual Level and worth looking at, set the level count

@@ -31,6 +31,10 @@ import requests
 import time
 from threading import Thread
 import traceback
+from sys import stdout
+
+def print(string):
+    stdout.write(str(string)+"\n")
 
 class UserUpdaterError(Exception):
     """ raise UserUpdaterError({"error":"On Status Label", "details":"Details of error"}) """
@@ -155,7 +159,7 @@ class User():
                 level_count = 0
                 if pb["run"]["category"] and pb["run"].get("videos"):
                     #Get a list of the game's subcategory variables
-                    url = "https://www.speedrun.com/api/v1/games/{game}/variables?max=200".format(game=pb["run"]["game"])
+                    url = "https://www.speedrun.com/api/v1/games/{game}/variables".format(game=pb["run"]["game"])
                     game_variables = get_file(url)
                     game_subcategory_ids = []
                     for game_variable in game_variables["data"]:
@@ -222,8 +226,8 @@ def get_file(p_url):
     ----------
     url : str   # The url to query
     """
-    print("\n{}".format(p_url)) #debugstr
     global session
+    print(p_url) #debugstr
     while True:
         try:
             data = session.get(p_url)

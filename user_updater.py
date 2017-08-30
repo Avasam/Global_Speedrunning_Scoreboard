@@ -92,8 +92,6 @@ class Run():
 
                 # If the run is an Individual Level and worth looking at, set the level count
                 if self.level and self._place/self._leaderboard_size <= MIN_RANK_PERCENT:
-                    # DO NOT THREAD THIS, we even wait on purpose
-                    time.sleep(0.5)
                     url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
                     levels = get_file(url)
                     self.level_count = len(levels["data"])
@@ -214,7 +212,8 @@ class User():
         finally:
             update_progress(1, 0)
 
-
+global session
+session = requests.Session()
 def get_file(p_url):
     """
     Returns the content of "url" parsed as JSON dict.
@@ -224,9 +223,10 @@ def get_file(p_url):
     url : str   # The url to query
     """
     print("\n{}".format(p_url)) #debugstr
+    global session
     while True:
         try:
-            data = requests.get(p_url)
+            data = session.get(p_url)
             data.raise_for_status()
             break
         except requests.exceptions.ConnectionError as exception:
@@ -263,6 +263,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
     statusLabel_current = 0
     global statusLabel_max
     statusLabel_max = 0
+    global session
     global worksheet
     global gs_client
     global threadsException
@@ -271,7 +272,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
 
     try:
         # Send to Webapp
-        def send_to_webapp(p_user): requests.post("https://avasam.pythonanywhere.com/", data = {"action": "update-user", "name-or-id": p_user})
+        def send_to_webapp(p_user): session.post("https://avasam.pythonanywhere.com/", data = {"action": "update-user", "name-or-id": p_user})
         Thread(target=send_to_webapp, args=(p_user_ID,)).start()
 
         # Check if already connected

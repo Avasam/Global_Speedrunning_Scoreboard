@@ -385,29 +385,37 @@ class AutoUpdateUsers(Thread):
         self.statusLabel = p_statusLabel
 
     def run(self):
+        def auto_updater_thread(user):
+            while True:
+                self.__check_for_pause()
+                try:
+                    try:
+                        get_updated_user(user["id"], self.statusLabel)
+                        break
+                    except gspread.exceptions.RequestError as exception:
+                        if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+                            print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
+                            time.sleep(HTTPERROR_RETRY_DELAY)
+                        else:
+                            raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
+                    except Exception:
+                        raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
+                except UserUpdaterError as exception:
+                    print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"])) #debugstr
+                    break
+            
         url = self.BASE_URL
         while True:
             self.__check_for_pause()
             self.statusLabel.configure(text="Auto-updating userbase...")
             users = get_file(url)
+##            threads = []
             for user in users["data"]:
-                self.__check_for_pause()
-                while True:
-                    try:
-                        try:
-                            get_updated_user(user["id"], self.statusLabel)
-                            break
-                        except gspread.exceptions.RequestError as exception:
-                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-                                print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
-                                time.sleep(HTTPERROR_RETRY_DELAY)
-                            else:
-                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
-                        except Exception:
-                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
-                    except UserUpdaterError as exception:
-                        print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"])) #debugstr
-                        break
+                auto_updater_thread(user) # Not threaded
+##                threads.append(Thread(target=auto_updater_thread, args=(user,)))
+##            for t in threads: t.start()
+##            for t in threads: t.join()
+                
 
             link_found = False
             for link in users["pagination"]["links"]:

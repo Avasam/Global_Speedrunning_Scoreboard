@@ -64,7 +64,7 @@ class Run():
         try:
             # If the run is an Individual Level, adapt the request url
             lvl_cat_str = "level/{level}/".format(level=self.level) if self.level else "category/"
-            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/{lvl_cat_str}{category}?video-only=true".format(game=self.game, lvl_cat_str=lvl_cat_str, category=self.category)
+            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/{lvl_cat_str}{category}?video-only=true&embed=players".format(game=self.game, lvl_cat_str=lvl_cat_str, category=self.category)
             for var_id, var_value in self.variables.items(): url += "&var-{id}={value}".format(id=var_id, value=var_value)
             leaderboard = get_file(url)
 
@@ -78,16 +78,25 @@ class Run():
                 for run in leaderboard["data"]["runs"]:
                     # Making sure this is a speedrun and not a score leaderboard
                     if not is_speedrun: # To avoid false negatives due to missing primary times, stop comparing once we know it's a speedrun
-                        if run["run"]["times"]["primary_t"] < previous_time: break # No need to keep looking
+                        if run["run"]["times"]["primary_t"] < previous_time: break # Score based leaderboard. No need to keep looking
                         elif run["run"]["times"]["primary_t"] > previous_time: is_speedrun = True
 
                     # Updating leaderboard size and rank
+                    banned_players = []
+                    for player in leaderboard["data"]["players"]["data"]:
+                        if player.get("role") == "banned": banned_players.append(player["id"])
                     if run["place"] > 0:
-                        self._leaderboard_size += 1
-                        if not found:
-                            self._place += 1
-                            if run["run"]["id"] == self.ID:
-                                found = True
+                        players = []
+                        is_banned = False
+                        for player in run["run"]["players"]:
+                            if player.get("id") in banned_players: is_banned = True
+                        if not is_banned:
+                    ### If the user isn't banned and the run is valid
+                            self._leaderboard_size += 1
+                            if not found:
+                                self._place += 1
+                                if run["run"]["id"] == self.ID:
+                                    found = True
                 if not (is_speedrun and found): self._place = -1
 
                 # If the run is an Individual Level and worth looking at, set the level count
@@ -128,26 +137,20 @@ class User():
         self._name = ID_or_name
 
     def __str__(self):
-        return "User: <{}, {}, {}>".format(self._name, self._points, self._ID)
+        return "User: <{}, {}, {}{}>".format(self._name, self._points, self._ID, "(Banned)" if self._banned else "")
 
     def set_code_and_name(self):
-        try:
-            url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._ID)
-            infos = get_file(url)
-            if "status" in infos: raise UserUpdaterError({"error":"{} (speedrun.com)".format(infos["status"]), "details":infos["message"]})
-            if infos["data"]["role"] != "banned":
-                self._ID = infos["data"]["id"]
-                self._weblink = infos["data"]["weblink"]
-                self._name = infos["data"]["names"].get("international")
-                japanese_name = infos["data"]["names"].get("japanese")
-                if japanese_name: self._name += " ({})".format(japanese_name)
-            else:
-                self._banned = True
-                self._points = 0
-        except UserUpdaterError as exception:
-            threadsException.append(exception.args[0])
-        except Exception:
-            threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
+        url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._ID)
+        infos = get_file(url)
+        if "status" in infos: raise UserUpdaterError({"error":"{} (speedrun.com)".format(infos["status"]), "details":infos["message"]})
+        self._ID = infos["data"]["id"]
+        self._weblink = infos["data"]["weblink"]
+        self._name = infos["data"]["names"].get("international")
+        japanese_name = infos["data"]["names"].get("japanese")
+        if japanese_name: self._name += " ({})".format(japanese_name)
+        if infos["data"]["role"] == "banned":
+            self._banned = True
+            self._points = 0
 
     def set_points(self):
         counted_runs = {}
@@ -187,32 +190,26 @@ class User():
             finally:
                 update_progress(1, 0)
 
-        try:
-            if not self._banned:
-                url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._ID)
-                PBs = get_file(url)
-                if "status" in PBs: raise UserUpdaterError({"error":"{} (speedrun.com)".format(PBs["status"]), "details":PBs["message"]})
-                self._points = 0
-                update_progress(0, len(PBs["data"]))
-                threads = []
-                for pb in PBs["data"]:
-                    threads.append(Thread(target=set_points_thread, args=(pb,)))
-                for t in threads: t.start()
-                for t in threads: t.join()
-                # Sum up the runs' score
-                self._point_distribution_str="\nCategory | Points\n-------- | ------".format(self._name)
-                for category, points in counted_runs.items():
-                    self._points += points
-                    self._point_distribution_str+="\n{} | {}".format(category, math.ceil(points*10)/10)
-                if self._banned: self._points = 0 # In case the banned flag has been set mid-thread
-                else: self._points = math.ceil(self._points)
-            else: self._points = 0
-        except UserUpdaterError as exception:
-            threadsException.append(exception.args[0])
-        except Exception as exception:
-            threadsException.append({"error":"Unhandled", "details":traceback.format_exc()})
-        finally:
-            update_progress(1, 0)
+        if not self._banned:
+            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._ID)
+            PBs = get_file(url)
+            if "status" in PBs: raise UserUpdaterError({"error":"{} (speedrun.com)".format(PBs["status"]), "details":PBs["message"]})
+            self._points = 0
+            update_progress(0, len(PBs["data"]))
+            threads = []
+            for pb in PBs["data"]:
+                threads.append(Thread(target=set_points_thread, args=(pb,)))
+            for t in threads: t.start()
+            for t in threads: t.join()
+            # Sum up the runs' score
+            self._point_distribution_str="\nCategory | Points\n-------- | ------".format(self._name)
+            for category, points in counted_runs.items():
+                self._points += points
+                self._point_distribution_str+="\n{} | {}".format(category, math.ceil(points*10)/10)
+            if self._banned: self._points = 0 # In case the banned flag has been set mid-thread
+            else: self._points = math.ceil(self._points)
+        else: self._points = 0
+        update_progress(1, 0)
 
 
 def get_file(p_url):
@@ -289,11 +286,10 @@ def get_updated_user(p_user_ID, p_statusLabel):
         statusLabel.configure(text="Fetching online data from speedrun.com. Please wait...")
         user = User(p_user_ID)
         print("{}\n{}".format(SEPARATOR, user._name)) #debugstr
-
-        threads = [Thread(target=user.set_code_and_name), Thread(target=user.set_points)]
-        update_progress(0, len(threads))
-        for t in threads: t.start()
-        for t in threads: t.join()
+        
+        update_progress(0, 2)
+        user.set_code_and_name()
+        user.set_points()
         update_progress(1, 0) # Because user.set_code_and_name() is too fast
 
         if threadsException == []:
@@ -343,7 +339,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
                     worksheet.insert_row(values, index=row_count+1)
                 textOutput += user._point_distribution_str
             else:
-                textOutput = "Not updloading data as {} has a score of 0.".format(user)
+                textOutput = "Not updloading data as {} {}.".format(user, "is banned" if user._banned else "has a score of 0")
 
         else:
             errorStrList = []

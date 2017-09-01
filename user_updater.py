@@ -35,6 +35,9 @@ import traceback
 class UserUpdaterError(Exception):
     """ raise UserUpdaterError({"error":"On Status Label", "details":"Details of error"}) """
     pass
+class NotFoundError(UserUpdaterError):
+    """ raise NotFoundError({"error":"404 Not Found", "details":"Details of error"}) """
+    pass
 
 
 class Run():
@@ -141,7 +144,10 @@ class User():
 
     def set_code_and_name(self):
         url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._ID)
-        infos = get_file(url)
+        try:
+            infos = get_file(url)
+        except NotFoundError as exception:
+            raise UserUpdaterError({"error":exception.args[0]["error"], "details":"User \"{}\" not found. Make sure the name or ID is typed properly. It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._ID)})
         if "status" in infos: raise UserUpdaterError({"error":"{} (speedrun.com)".format(infos["status"]), "details":infos["message"]})
         self._ID = infos["data"]["id"]
         self._weblink = infos["data"]["weblink"]
@@ -192,7 +198,10 @@ class User():
 
         if not self._banned:
             url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._ID)
-            PBs = get_file(url)
+            try:
+                PBs = get_file(url)
+            except NotFoundError as exception:
+                raise UserUpdaterError({"error":exception.args[0]["error"], "details":"User \"{}\" not found. Make sure the name or ID is typed properly. It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._ID)})
             if "status" in PBs: raise UserUpdaterError({"error":"{} (speedrun.com)".format(PBs["status"]), "details":PBs["message"]})
             self._points = 0
             update_progress(0, len(PBs["data"]))
@@ -232,6 +241,8 @@ def get_file(p_url):
             if data.status_code in HTTP_RETRYABLE_ERRORS:
                 print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
                 time.sleep(HTTPERROR_RETRY_DELAY)
+            elif data.status_code == 404:
+                raise NotFoundError({"error":"404 Not Found", "details":exception.args[0]})
             else: raise UserUpdaterError({"error":"HTTPError {}".format(data.status_code), "details":exception.args[0]})
 
     data = data.json()

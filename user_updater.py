@@ -31,6 +31,10 @@ import requests
 import time
 from threading import Thread
 import traceback
+from sys import stdout
+
+def print(string):
+    stdout.write(str(string)+"\n")
 
 class UserUpdaterError(Exception):
     """ raise UserUpdaterError({"error":"On Status Label", "details":"Details of error"}) """
@@ -104,8 +108,6 @@ class Run():
 
                 # If the run is an Individual Level and worth looking at, set the level count
                 if self.level and self._place/self._leaderboard_size <= MIN_RANK_PERCENT:
-                    # DO NOT THREAD THIS, we even wait on purpose
-                    time.sleep(0.5)
                     url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
                     levels = get_file(url)
                     self.level_count = len(levels["data"])
@@ -166,7 +168,7 @@ class User():
                 level_count = 0
                 if pb["run"]["category"] and pb["run"].get("videos"):
                     #Get a list of the game's subcategory variables
-                    url = "https://www.speedrun.com/api/v1/games/{game}/variables?max=200".format(game=pb["run"]["game"])
+                    url = "https://www.speedrun.com/api/v1/games/{game}/variables".format(game=pb["run"]["game"])
                     game_variables = get_file(url)
                     game_subcategory_ids = []
                     for game_variable in game_variables["data"]:
@@ -220,7 +222,8 @@ class User():
         else: self._points = 0
         update_progress(1, 0)
 
-
+global session
+session = requests.Session()
 def get_file(p_url):
     """
     Returns the content of "url" parsed as JSON dict.
@@ -229,10 +232,11 @@ def get_file(p_url):
     ----------
     url : str   # The url to query
     """
-    print("\n{}".format(p_url)) #debugstr
+    global session
+    print(p_url) #debugstr
     while True:
         try:
-            data = requests.get(p_url)
+            data = session.get(p_url)
             data.raise_for_status()
             break
         except requests.exceptions.ConnectionError as exception:
@@ -271,6 +275,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
     statusLabel_current = 0
     global statusLabel_max
     statusLabel_max = 0
+    global session
     global worksheet
     global gs_client
     global threadsException
@@ -279,7 +284,7 @@ def get_updated_user(p_user_ID, p_statusLabel):
 
     try:
         # Send to Webapp
-        def send_to_webapp(p_user): requests.post("https://avasam.pythonanywhere.com/", data = {"action": "update-user", "name-or-id": p_user})
+        def send_to_webapp(p_user): session.post("https://avasam.pythonanywhere.com/", data = {"action": "update-user", "name-or-id": p_user})
         Thread(target=send_to_webapp, args=(p_user_ID,)).start()
 
         # Check if already connected
@@ -387,29 +392,37 @@ class AutoUpdateUsers(Thread):
         self.statusLabel = p_statusLabel
 
     def run(self):
+        def auto_updater_thread(user):
+            while True:
+                self.__check_for_pause()
+                try:
+                    try:
+                        get_updated_user(user["id"], self.statusLabel)
+                        break
+                    except gspread.exceptions.RequestError as exception:
+                        if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+                            print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
+                            time.sleep(HTTPERROR_RETRY_DELAY)
+                        else:
+                            raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
+                    except Exception:
+                        raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
+                except UserUpdaterError as exception:
+                    print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"])) #debugstr
+                    break
+            
         url = self.BASE_URL
         while True:
             self.__check_for_pause()
             self.statusLabel.configure(text="Auto-updating userbase...")
             users = get_file(url)
+##            threads = []
             for user in users["data"]:
-                self.__check_for_pause()
-                while True:
-                    try:
-                        try:
-                            get_updated_user(user["id"], self.statusLabel)
-                            break
-                        except gspread.exceptions.RequestError as exception:
-                            if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-                                print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY)) #debugstr
-                                time.sleep(HTTPERROR_RETRY_DELAY)
-                            else:
-                                raise UserUpdaterError({"error":"Unhandled RequestError", "details":traceback.format_exc()})
-                        except Exception:
-                            raise UserUpdaterError({"error":"Unhandled", "details":traceback.format_exc()})
-                    except UserUpdaterError as exception:
-                        print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"])) #debugstr
-                        break
+                auto_updater_thread(user) # Not threaded
+##                threads.append(Thread(target=auto_updater_thread, args=(user,)))
+##            for t in threads: t.start()
+##            for t in threads: t.join()
+                
 
             link_found = False
             for link in users["pagination"]["links"]:

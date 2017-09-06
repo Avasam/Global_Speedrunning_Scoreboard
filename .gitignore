@@ -87,6 +87,12 @@ ENV/
 # Rope project settings
 .ropeproject
 
+# Netbeans
+/nbproject/private/
+
+# PyCharm
+/.idea/workspace.xml
+
 # =========================
 # Operating System Files
 # =========================
@@ -137,6 +143,3 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-
-# Netbeans
-/nbproject/private/

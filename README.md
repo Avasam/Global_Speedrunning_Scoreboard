@@ -13,6 +13,7 @@ How the score is calculated:
 - The only 2 arbritrary numbers are: 4 and 60%
     - 4 is the minimum amount of players that should be present in a leaderboard.
     - 60% minimum percentile needed in a leaderboard for a run to be worth any point.
+- Individual Levels are considered, however their value is divided according to the amount of ILs in the same category.
 - Runs whitout video/image verifications are not considered AND not counted.
 - Leaderboards based on score rather than speed are excluded†
 
@@ -21,3 +22,6 @@ How the score is calculated:
 †The method used to differentiate speedruns from scores leaderboards can very rarely give false-negative.
 It happens when only the 1st place is/are using the primary time comparison ([see this example screenshot](http://puu.sh/xfrpr/57d6358440.jpg))
 wich you can easily fix if you're a mod or if your run is part of the leaderboard by updating the times.
+
+
+Special thanks to [Dugongue](http://www.speedrun.com/user/Dugongue) for testing a lot.

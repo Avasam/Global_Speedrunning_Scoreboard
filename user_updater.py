@@ -75,6 +75,9 @@ class Run():
         return "Run: <Game: {}, Category: {}, {}{}/{} ÷{}>".format(self.game, self.category, level_str, self._place,
                                                                    self._leaderboard_size, self.level_count + 1)
 
+    def compare_str(self):
+        return self.category+"-"+self.level
+
     def __set_leaderboard_size_and_place(self):
         try:
             # If the run is an Individual Level, adapt the request url
@@ -203,10 +206,10 @@ class User:
                     # If a category has already been counted, only keep the one that's worth the most.
                     # This can happen in leaderboards with multiple coop runs or multiple subcategories.
                     if run._points > 0:
-                        if run.category in counted_runs:
-                            counted_runs[run.category] = max(counted_runs[run.category], run._points)
+                        if run.compare_str() in counted_runs:
+                            counted_runs[run.compare_str()] = max(counted_runs[run.compare_str()], run._points)
                         else:
-                            counted_runs[run.category] = run._points
+                            counted_runs[run.compare_str()] = run._points
             except UserUpdaterError as exception:
                 threadsException.append(exception.args[0])
             except Exception:
@@ -232,7 +235,7 @@ class User:
             for t in threads: t.start()
             for t in threads: t.join()
             # Sum up the runs' score
-            self._point_distribution_str = "\nCategory | Points\n-------- | ------".format(self._name)
+            self._point_distribution_str = "\nCategory-Level    | Points\n----------------- | ------".format(self._name)
             for category, points in counted_runs.items():
                 self._points += points
                 self._point_distribution_str += "\n{} | {}".format(category, math.ceil(points * 10) / 10)

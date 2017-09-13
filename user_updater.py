@@ -76,7 +76,7 @@ class Run():
                                                                    self._leaderboard_size, self.level_count + 1)
 
     def compare_str(self):
-        return self.category+"-"+self.level
+        return "{}-{}".format(self.level, self.category)
 
     def __set_leaderboard_size_and_place(self):
         try:

@@ -100,7 +100,7 @@ topFrame.pack(side=TOP, fill=X, padx=4, pady=4)
 entryFrame = Frame(topFrame)
 entryFrame.pack(side=LEFT, expand=1, fill=X)
 # Code Entry
-label = Label(entryFrame, text="Enter a runner's name or id_: ")
+label = Label(entryFrame, text="Enter a runner's name or ID: ")
 label.pack(side=LEFT)
 v = StringVar()
 v.set(defaultCode)

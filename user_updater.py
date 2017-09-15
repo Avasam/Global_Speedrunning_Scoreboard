@@ -76,7 +76,7 @@ class Run():
                                                                    self._leaderboard_size, self.level_count + 1)
 
     def compare_str(self):
-        return "{}-{}".format(self.level, self.category)
+        return "{}-{}".format(self.category, self.level)
 
     def __set_leaderboard_size_and_place(self):
         try:
@@ -236,9 +236,9 @@ class User:
             for t in threads: t.join()
             # Sum up the runs' score
             self._point_distribution_str = "\nCategory-Level    | Points\n----------------- | ------".format(self._name)
-            for category, points in counted_runs.items():
+            for category_level, points in counted_runs.items():
                 self._points += points
-                self._point_distribution_str += "\n{} | {}".format(category, math.ceil(points * 10) / 10)
+                self._point_distribution_str += "\n{0:<17} | {1}".format(category_level, math.ceil(points * 10) / 10)
             if self._banned:
                 self._points = 0  # In case the banned flag has been set mid-thread
             else:

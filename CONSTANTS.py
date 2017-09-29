@@ -45,6 +45,7 @@ finally:
     credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 
 SEPARATOR = "-" * 64
+AUTOUPDATER_OFFSET = 4600
 
 COL_USERNAME = 2
 COL_POINTS = 3

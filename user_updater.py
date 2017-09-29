@@ -46,7 +46,7 @@ class UserUpdaterError(Exception):
     pass
 
 
-class NotFoundError(UserUpdaterError):
+class SpeedrunComError(UserUpdaterError):
     """ raise NotFoundError({"error":"404 Not Found", "details":"Details of error"}) """
     pass
 
@@ -160,12 +160,11 @@ class User:
         url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._id)
         try:
             infos = get_file(url)
-        except NotFoundError as exception:
+        except SpeedrunComError as exception:
             raise UserUpdaterError({"error": exception.args[0]["error"],
-                                    "details": "User \"{}\" not found. Make sure the name or ID is typed properly. "
-                                               "It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._id)})
-        if "status" in infos:
-            raise UserUpdaterError({"error": "{} (speedrun.com)".format(infos["status"]), "details": infos["message"]})
+                                    "details": "User \"{}\" not found.\n"
+                                               "Make sure the name or ID is typed properly. It's possible the user you're looking for changed its name. "
+                                               "In case of doubt, use its ID.".format(self._id)})
         self._id = infos["data"]["id"]
         self._weblink = infos["data"]["weblink"]
         self._name = infos["data"]["names"].get("international")
@@ -214,15 +213,8 @@ class User:
                 update_progress(1, 0)
 
         if not self._banned:
-            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._id)
-            try:
-                pbs = get_file(url)
-            except NotFoundError as exception:
-                raise UserUpdaterError({"error": exception.args[0]["error"],
-                                        "details": "User \"{}\" not found. Make sure the name or ID is typed properly. "
-                                                   "It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._id)})
-            if "status" in pbs:
-                raise UserUpdaterError({"error": "{} (speedrun.com)".format(pbs["status"]), "details": pbs["message"]})
+            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._id) #.format(user=self._id)
+            pbs = get_file(url)
             self._points = 0
             update_progress(0, len(pbs["data"]))
             threads = []
@@ -257,25 +249,24 @@ def get_file(p_url: str) -> dict:
     print(p_url)  # debugstr
     while True:
         try:
-            data = session.get(p_url)
+            rawdata = session.get(p_url)
         except requests.exceptions.ConnectionError as exception:
             raise UserUpdaterError({"error": "Can't establish connexion to speedrun.com", "details": exception})
         try:
-            data.raise_for_status()
+            jsondata = rawdata.json()
+            if type(jsondata) != dict: print("{}:{}".format(type(jsondata), jsondata))  # debugstr
+            if "status" in jsondata: raise SpeedrunComError({"error": "{} (speedrun.com)".format(jsondata["status"]), "details": jsondata["message"]})
+            #"details": "User \"{}\" not found. Make sure the name or ID is typed properly. "
+            #                                   "It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._id)})
+            rawdata.raise_for_status()
             break
         except requests.exceptions.HTTPError as exception:
-            if data.status_code in HTTP_RETRYABLE_ERRORS:
+            if rawdata.status_code in HTTP_RETRYABLE_ERRORS:
                 print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
                 time.sleep(HTTPERROR_RETRY_DELAY)
-            elif data.status_code == 404:
-                raise NotFoundError({"error": "404 Not Found", "details": exception.args[0]})
             else:
-                raise UserUpdaterError({"error": "HTTPError {}".format(data.status_code), "details": exception.args[0]})
-
-    data = data.json()
-    if type(data) != dict: print("{}:{}".format(type(data), data))  # debugstr
-    if "error" in data: raise UserUpdaterError({"error": data["status"], "details": data["error"]})
-    return (data)
+                raise UserUpdaterError({"error": "HTTPError {}".format(rawdata.status_code), "details": exception.args[0]})
+    return (jsondata)
 
 
 def update_progress(p_current: int, p_max: int) -> None:
@@ -385,7 +376,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
             error_str_list = []
             for e in threadsException: error_str_list.append("Error: {}\n{}".format(e["error"], e["details"]))
             error_str_counter = Counter(error_str_list)
-            errors_str = "{0}\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
+            errors_str = "{0}\nhttps://github.com/Avasam/Global_speedrunning_leaderboard/issues\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
             for error, count in error_str_counter.items(): errors_str += "[x{}] {}\n".format(count, error)
             text_output += ("\n" if text_output else "") + errors_str
 
@@ -414,7 +405,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
 
 # !Autoupdater
 class AutoUpdateUsers(Thread):
-    BASE_URL = "https://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=0"
+    BASE_URL = "https://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset={}".format(AUTOUPDATER_OFFSET)
     paused = True
     global statusLabel
 
@@ -432,8 +423,7 @@ class AutoUpdateUsers(Thread):
                         break
                     except gspread.exceptions.RequestError as exception:
                         if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-                            print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0],
-                                                                                HTTPERROR_RETRY_DELAY))  # debugstr
+                            print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
                             time.sleep(HTTPERROR_RETRY_DELAY)
                         else:
                             raise UserUpdaterError(

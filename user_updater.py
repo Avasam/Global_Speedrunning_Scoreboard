@@ -53,96 +53,92 @@ class NotFoundError(UserUpdaterError):
 
 class Run():
     id_ = ""
+    primary_t = 0.0
     game = ""
     category = ""
     variables = {}
     level = ""
     level_count = 0
-    _place = 0
     _points = 0
-    _leaderboard_size = 0
 
-    def __init__(self, id_, game, category, variables=None, level=""):
+    def __init__(self, id_, primary_t, game, category, variables={}, level=""):
         self.id_ = id_
+        self.primary_t = primary_t
         self.game = game
         self.category = category
-        if variables is None: self.variables = variables
+        self.variables = variables
         self.level = level
         self.__set_points()
 
     def __str__(self):
-        level_str = "Level: {}, ".format(self.level) if self.level else ""
-        return "Run: <Game: {}, Category: {}, {}{}/{} ÷{}>".format(self.game, self.category, level_str, self._place,
-                                                                   self._leaderboard_size, self.level_count + 1)
+        level_str = "Level/{}: {}, ".format( self.level_count, self.level) if self.level else ""
+        return "Run: <Game: {}, Category: {}, {}{} {}>".format(self.game, self.category, level_str, self.variables, math.ceil(self._points * 100) / 100)
 
     def compare_str(self):
         return "{}-{}".format(self.category, self.level)
 
-    def __set_leaderboard_size_and_place(self):
-        try:
-            # If the run is an Individual Level, adapt the request url
-            lvl_cat_str = "level/{level}/".format(level=self.level) if self.level else "category/"
-            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/{lvl_cat_str}{category}?video-only=true&embed=players".format(game=self.game,
-                                                                                                                                     lvl_cat_str=lvl_cat_str,
-                                                                                                                                     category=self.category)
-            for var_id, var_value in self.variables.items():
-                url += "&var-{id}={value}".format(id=var_id, value=var_value)
-            leaderboard = get_file(url)
-
-            # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally shown
-            if len(leaderboard["data"]["runs"]) >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation and request
-                self._place = 0
-                self._leaderboard_size = 0
-                previous_time = leaderboard["data"]["runs"][0]["run"]["times"]["primary_t"]
-                is_speedrun = False
-                found = False
-                for run in leaderboard["data"]["runs"]:
-                    # Making sure this is a speedrun and not a score leaderboard
-                    if not is_speedrun:  # To avoid false negatives due to missing primary times, stop comparing once we know it's a speedrun
-                        if run["run"]["times"]["primary_t"] < previous_time:
-                            break  # Score based leaderboard. No need to keep looking
-                        elif run["run"]["times"]["primary_t"] > previous_time:
-                            is_speedrun = True
-
-                    # Updating leaderboard size and rank
-                    banned_players = []
-                    for player in leaderboard["data"]["players"]["data"]:
-                        if player.get("role") == "banned": banned_players.append(player["id"])
-                    if run["place"] > 0:
-                        is_banned = False
-                        for player in run["run"]["players"]:
-                            if player.get("id") in banned_players: is_banned = True
-                        if not is_banned:
-                            # If the user isn't banned and the run is valid
-                            self._leaderboard_size += 1
-                            if not found:
-                                self._place += 1
-                                if run["run"]["id"] == self.id_:
-                                    found = True
-                if not (is_speedrun and found): self._place = -1
-
-                # If the run is an Individual Level and worth looking at, set the level count
-                if self.level and self._place / self._leaderboard_size <= MIN_RANK_PERCENT:
-                    url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
-                    levels = get_file(url)
-                    self.level_count = len(levels["data"])
-
-        except UserUpdaterError as exception:
-            threadsException.append(exception.args[0])
-        except Exception:
-            threadsException.append({"error": "Unhandled", "details": traceback.format_exc()})
-
     def __set_points(self):
         self._points = 0
-        self.__set_leaderboard_size_and_place()
+        # If the run is an Individual Level, adapt the request url
+        lvl_cat_str = "level/{level}/".format(level=self.level) if self.level else "category/"
+        url = "https://www.speedrun.com/api/v1/leaderboards/{game}/" \
+              "{lvl_cat_str}{category}?video-only=true&embed=players".format(game=self.game, lvl_cat_str=lvl_cat_str, category=self.category)
+        for var_id, var_value in self.variables.items():
+            url += "&var-{id}={value}".format(id=var_id, value=var_value)
+        leaderboard = get_file(url)
+
+        if len(leaderboard["data"]["runs"]) >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation
+            previous_time = leaderboard["data"]["runs"][0]["run"]["times"]["primary_t"]
+            is_speedrun = False
+
+            mean = 0.0
+            sigma = 0.0
+            population = 0
+            value = 0.0
+            for run in leaderboard["data"]["runs"]:
+                value = run["run"]["times"]["primary_t"]
+
+                # Making sure this is a speedrun and not a score leaderboard
+                if not is_speedrun:  # To avoid false negatives due to missing primary times, stop comparing once we know it's a speedrun
+                    if value < previous_time:
+                        break  # Score based leaderboard. No need to keep looking
+                    elif value > previous_time:
+                        is_speedrun = True
+
+                # Get a list of all banned players in this leaderboard
+                banned_players = []
+                for player in leaderboard["data"]["players"]["data"]:
+                    if player.get("role") == "banned": banned_players.append(player["id"])
+
+                # Updating leaderboard size and rank
+                if run["place"] > 0:
+                    for player in run["run"]["players"]:
+                        if player.get("id") in banned_players: break
+                    else:
+                        # If no participant is banned and the run is valid
+                        population += 1
+                        mean_temp = mean
+                        mean += (value - mean_temp) / population
+                        sigma += (value - mean_temp) * (value - mean)
+
+            if is_speedrun:  # Check to avoid useless computation
+                standard_deviation = (sigma / population) ** 0.5
+                if standard_deviation > 0:  # All runs must not have the exact same time
+                    signed_deviation = mean - self.primary_t
+                    lowest_deviation = value - mean
+                    adjusted_deviation = signed_deviation+lowest_deviation
+                    adjusted_standard_deviation = standard_deviation+lowest_deviation
+                    if adjusted_deviation > 0:  # The last run isn't worth any points TODO: detect if a run is the last earlier in the code
+                        normalized_signed_deviation = adjusted_deviation/adjusted_standard_deviation
+                        self._points = (normalized_signed_deviation ** DEVIATION_MULTIPLIER) * 10
+
+                        # If the run is an Individual Level and worth looking at, set the level count
+                        if self.level and self._points > 0:
+                            url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
+                            levels = get_file(url)
+                            self.level_count = len(levels["data"])
+                            self._points /= self.level_count + 1
         print(self)
-        # Check to avoid errors
-        if self._leaderboard_size > self._place and self._leaderboard_size >= MIN_LEADERBOARD_SIZE and self._place > 0:
-            # Give points according to the formula
-            # ROUNDUP(MAX(0;LN(MAX(1;B$2-$D$34+2))*LN(MAX(1;(-$A3)+(B$2*$D$35+2)))*(1+$D$35/$A3)))
-            ln_1 = math.log(self._leaderboard_size - MIN_LEADERBOARD_SIZE + 2)
-            ln_2 = math.log(max(1, -self._place + (self._leaderboard_size * MIN_RANK_PERCENT + 2)))
-            self._points = max(0, ln_1 * ln_2 * (1 + MIN_RANK_PERCENT / self._place)) / (self.level_count + 1)
 
 
 class User:
@@ -158,7 +154,7 @@ class User:
         self._name = id_or_name
 
     def __str__(self) -> str:
-        return "User: <{}, {}, {}{}>".format(self._name, self._points, self._id, "(Banned)" if self._banned else "")
+        return "User: <{}, {}, {}{}>".format(self._name, math.ceil(self._points * 100) / 100, self._id, "(Banned)" if self._banned else "")
 
     def set_code_and_name(self) -> None:
         url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._id)
@@ -202,7 +198,7 @@ class User:
                             # ... and add it to the run's subcategory variables
                             pb_subcategory_variables[pb_var_id] = pb_var_value
 
-                    run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["run"]["level"])
+                    run = Run(pb["run"]["id"], pb["run"]["times"]["primary_t"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["run"]["level"])
                     # If a category has already been counted, only keep the one that's worth the most.
                     # This can happen in leaderboards with multiple coop runs or multiple subcategories.
                     if run._points > 0:
@@ -238,11 +234,9 @@ class User:
             self._point_distribution_str = "\nCategory-Level    | Points\n----------------- | ------".format(self._name)
             for category_level, points in counted_runs.items():
                 self._points += points
-                self._point_distribution_str += "\n{0:<17} | {1}".format(category_level, math.ceil(points * 10) / 10)
-            if self._banned:
-                self._points = 0  # In case the banned flag has been set mid-thread
-            else:
-                self._points = math.ceil(self._points)
+                self._point_distribution_str += "\n{0:<17} | {1}".format(category_level, math.ceil(points * 100) / 100)
+            if self._banned or self._points < 1:
+                self._points = 0  # In case the banned flag has been set mid-thread or the user doesn't have at least 1 point
         else:
             self._points = 0
         update_progress(1, 0)

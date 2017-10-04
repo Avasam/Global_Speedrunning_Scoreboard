@@ -255,10 +255,12 @@ def get_file(p_url: str) -> dict:
             raise UserUpdaterError({"error": "Can't establish connexion to speedrun.com", "details": exception})
         try:
             jsondata = rawdata.json()
+        except json.decoder.JSONDecodeError as exception:
+            print("ERROR/WARNING: rawdata=\'{}\'\n{}".format(rawdata, exception))
+            raise exception
+        try:
             if type(jsondata) != dict: print("{}:{}".format(type(jsondata), jsondata))  # debugstr
             if "status" in jsondata: raise SpeedrunComError({"error": "{} (speedrun.com)".format(jsondata["status"]), "details": jsondata["message"]})
-            #"details": "User \"{}\" not found. Make sure the name or ID is typed properly. "
-            #                                   "It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._id)})
             rawdata.raise_for_status()
             break
         except requests.exceptions.HTTPError as exception:

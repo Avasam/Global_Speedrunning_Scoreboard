@@ -21,7 +21,6 @@
 # Contact:
 # samuel.06@hotmail.com
 ###########################################################################
-
 import _thread
 import os.path
 from tkinter import *

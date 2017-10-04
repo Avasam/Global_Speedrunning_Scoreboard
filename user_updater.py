@@ -97,6 +97,8 @@ class Run():
                 if player.get("role") == "banned":
                     banned_players.append(player["id"])
 
+            wr_time = None
+            worst_time = 0.0
             mean = 0.0
             sigma = 0.0
             population = 0
@@ -118,20 +120,32 @@ class Run():
                     else:
                         # If no participant is banned and the run is valid
                         population += 1
+                        if not wr_time: wr_time = value
+                        worst_time = max(worst_time, value)
                         mean_temp = mean
                         mean += (value - mean_temp) / population
                         sigma += (value - mean_temp) * (value - mean)
 
-            if is_speedrun:  # Check to avoid useless computation
+            if is_speedrun and population >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation
                 standard_deviation = (sigma / population) ** 0.5
                 if standard_deviation > 0:  # All runs must not have the exact same time
+                    # Get the +- deviation from the mean
                     signed_deviation = mean - self.primary_t
-                    lowest_deviation = value - mean
+                    # Get the deviation from the mean of the worse time as a positive number
+                    lowest_deviation = worst_time - mean
+                    # These three shift the deviations up so that the worse time is now 0
                     adjusted_deviation = signed_deviation+lowest_deviation
                     adjusted_standard_deviation = standard_deviation+lowest_deviation
+                    adjusted_mean_deviation = 0+lowest_deviation
                     if adjusted_deviation > 0:  # The last run isn't worth any points TODO: detect if a run is the last earlier in the code
-                        normalized_signed_deviation = adjusted_deviation/adjusted_standard_deviation
-                        self._points = (normalized_signed_deviation ** DEVIATION_MULTIPLIER) * 10
+                        # Scale all the normalized deviations so that the mean is worth 1 but the worse stays 0
+                        normalized_deviation = (adjusted_deviation/adjusted_standard_deviation) * (1/(adjusted_mean_deviation/adjusted_standard_deviation))
+                        # Bonus points for long games
+                        length_bonus = (1+(wr_time/TIME_BONUS_DIVISOR))
+                        # More people means more accurate relative time and more optimised/hard to reach high times
+                        certainty_adjustment = (1-(1/(population-1))) if population != 1 else 0
+                        # Give points
+                        self._points = ((normalized_deviation * certainty_adjustment) ** 2) * length_bonus * 10
 
                         # If the run is an Individual Level and worth looking at, set the level count
                         if self.level and self._points > 0:

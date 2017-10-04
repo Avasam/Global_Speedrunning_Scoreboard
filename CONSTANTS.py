@@ -52,9 +52,7 @@ COL_LAST_UPDATE = 4
 COL_USERID = 5
 ROW_FIRST = 3
 MIN_LEADERBOARD_SIZE = 3
-# Higher means more importance towards relatively good runs
-# Lower means more importance towards playing multiple games
-DEVIATION_MULTIPLIER = 3
+TIME_BONUS_DIVISOR = 10800  # 3h for +100%
 
 HTTPERROR_RETRY_DELAY = 5
 HTTP_RETRYABLE_ERRORS = [401, 420, 500, 502]

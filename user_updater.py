@@ -91,6 +91,12 @@ class Run():
             previous_time = leaderboard["data"]["runs"][0]["run"]["times"]["primary_t"]
             is_speedrun = False
 
+            # Get a list of all banned players in this leaderboard
+            banned_players = []
+            for player in leaderboard["data"]["players"]["data"]:
+                if player.get("role") == "banned":
+                    banned_players.append(player["id"])
+
             mean = 0.0
             sigma = 0.0
             population = 0
@@ -104,11 +110,6 @@ class Run():
                         break  # Score based leaderboard. No need to keep looking
                     elif value > previous_time:
                         is_speedrun = True
-
-                # Get a list of all banned players in this leaderboard
-                banned_players = []
-                for player in leaderboard["data"]["players"]["data"]:
-                    if player.get("role") == "banned": banned_players.append(player["id"])
 
                 # Updating leaderboard size and rank
                 if run["place"] > 0:

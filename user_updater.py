@@ -275,25 +275,36 @@ def get_file(p_url: str) -> dict:
     while True:
         try:
             rawdata = session.get(p_url)
-        except requests.exceptions.ConnectionError as exception:
+        except requests.exceptions.ConnectionError as exception:  # Connexion error
             raise UserUpdaterError({"error": "Can't establish connexion to speedrun.com", "details": exception})
+
         try:
             jsondata = rawdata.json()
-        except json.decoder.JSONDecodeError as exception:
-            print("ERROR/WARNING: rawdata=\'{}\'\n{}".format(rawdata, exception))
-            raise exception
-        try:
-            if type(jsondata) != dict: print("{}:{}".format(type(jsondata), jsondata))  # debugstr
-            if "status" in jsondata: raise SpeedrunComError({"error": "{} (speedrun.com)".format(jsondata["status"]), "details": jsondata["message"]})
-            rawdata.raise_for_status()
-            break
-        except requests.exceptions.HTTPError as exception:
-            if rawdata.status_code in HTTP_RETRYABLE_ERRORS:
-                print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
-                time.sleep(HTTPERROR_RETRY_DELAY)
-            else:
-                raise UserUpdaterError({"error": "HTTPError {}".format(rawdata.status_code), "details": exception.args[0]})
-    return (jsondata)
+        except json.decoder.JSONDecodeError as exception:  # Didn't recieve a JSON file ...
+            try:
+                rawdata.raise_for_status()
+            except requests.exceptions.HTTPError as exception:  # ... because it's an HTTP error
+                if rawdata.status_code in HTTP_RETRYABLE_ERRORS:
+                    print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
+                    time.sleep(HTTPERROR_RETRY_DELAY)
+                    # No break or raise as we want to retry
+                else:
+                    raise UserUpdaterError({"error": "HTTPError {}".format(rawdata.status_code), "details": exception.args[0]})
+            else:  # ... we don't know why (elevate the exception)
+                print("ERROR/WARNING: rawdata=({})\'{}\'\n".format(type(rawdata), rawdata)) # debugstr
+                raise exception
+
+        else:
+            if "status" in jsondata:  # Speedrun.com custom error
+                if jsondata["status"] in HTTP_RETRYABLE_ERRORS:
+                    print("WARNING: {}. {}. Retrying in {} seconds.".format(jsondata["status"], jsondata["message"], HTTPERROR_RETRY_DELAY))  # debugstr
+                    time.sleep(HTTPERROR_RETRY_DELAY)
+                    # No break or raise as we want to retry
+                else:
+                    raise SpeedrunComError({"error": "{} (speedrun.com)".format(jsondata["status"]), "details": jsondata["message"]})
+
+            else:  # No error
+                return (jsondata)
 
 
 def update_progress(p_current: int, p_max: int) -> None:

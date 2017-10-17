@@ -446,50 +446,93 @@ class AutoUpdateUsers(Thread):
     BASE_URL = "https://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset={}".format(AUTOUPDATER_OFFSET)
     paused = True
     global statusLabel
+    global worksheet
+    global gs_client
 
     def __init__(self, p_statusLabel, **kwargs):
         Thread.__init__(self, **kwargs)
         self.statusLabel = p_statusLabel
+        self.worksheet = None
+        self.gs_client = None
 
     def run(self):
         def auto_updater_thread(user):
             while True:
                 self.__check_for_pause()
+            # try:
                 try:
-                    try:
-                        get_updated_user(user["id"], self.statusLabel)
-                        break
-                    except gspread.exceptions.RequestError as exception:
-                        if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-                            print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
-                            time.sleep(HTTPERROR_RETRY_DELAY)
-                        else:
-                            raise UserUpdaterError(
-                                {"error": "Unhandled RequestError", "details": traceback.format_exc()})
-                    except Exception:
-                        raise UserUpdaterError({"error": "Unhandled", "details": traceback.format_exc()})
-                except UserUpdaterError as exception:
-                    print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"]))  # debugstr
+                    get_updated_user(user["id"], self.statusLabel)
                     break
+                except gspread.exceptions.RequestError as exception:
+                    if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+                        print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
+                        time.sleep(HTTPERROR_RETRY_DELAY)
+                    else:
+                        raise UserUpdaterError({"error": "Unhandled RequestError", "details": traceback.format_exc()})
+                except Exception:
+                    raise UserUpdaterError({"error": "Unhandled", "details": traceback.format_exc()})
+            # except UserUpdaterError as exception:
+            #     print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"]))  # debugstr
+            #     break
+
+        # First update users from spreadsheet
+        if AUTOUPDATER_SHEET_START:
+            self.__check_for_pause()
+            # Check if already connected
+            if not (self.gs_client and self.worksheet):
+                # Authentify to Google Sheets API
+                self.statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
+                gs_client = gspread.authorize(credentials)
+                print("https://docs.google.com/spreadsheets/d/{spreadsheet}\n".format(spreadsheet=SPREADSHEET_ID))
+                worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+            # Refresh credentials
+            gs_client.login()
+
+            worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+
+            row_count = worksheet.row_count
+            print("slow call to GSheets")
+            cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
+            print("slow call done")
+
+            row_count = len(cell_list)
+            if AUTOUPDATER_SHEET_START < row_count:
+                for row, cell in enumerate(cell_list):
+                    self.__check_for_pause()
+                    print("Auto-updater @ row: {}/{}".format(row + ROW_FIRST, row_count))
+                    try:
+                        auto_updater_thread({"id": cell.value})  # Not threaded
+                    except UserUpdaterError as exception:
+                        print(exception)
+                    except Exception as exception:
+                        print(exception)
+            else:
+                print("WARNING: There are less cells ({}) than the starting point({})".format(row_count,AUTOUPDATER_SHEET_START))
 
         url = self.BASE_URL
+        offset_tracker = AUTOUPDATER_OFFSET
         while True:
             self.__check_for_pause()
-            self.statusLabel.configure(text="Auto-updating userbase...")
-            users = get_file(url)
-            # threads = []
-            for user in users["data"]:
-                auto_updater_thread(user)  # Not threaded
-            # threads.append(Thread(target=auto_updater_thread, args=(user,)))
-            # for t in threads: t.start()
-            # for t in threads: t.join()
+            try:
+                self.statusLabel.configure(text="Auto-updating userbase...")
+                users = get_file(url)
+                # threads = []
+                for user in users["data"]:
+                    print("\nAuto-updater @ offset: {}".format(offset_tracker))
+                    auto_updater_thread(user)  # Not threaded
+                    offset_tracker += 1
+                # threads.append(Thread(target=auto_updater_thread, args=(user,)))
+                # for t in threads: t.start()
+                # for t in threads: t.join()
 
-            link_found = False
-            for link in users["pagination"]["links"]:
-                if link["rel"] == "next":
-                    url = link["uri"]
-                    link_found = True
-            if not link_found: url = self.BASE_URL
+                link_found = False
+                for link in users["pagination"]["links"]:
+                    if link["rel"] == "next":
+                        url = link["uri"]
+                        link_found = True
+                if not link_found: url = self.BASE_URL
+            except UserUpdaterError as exception:
+                print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"]))  # debugstr
 
     def __check_for_pause(self):
         while self.paused:

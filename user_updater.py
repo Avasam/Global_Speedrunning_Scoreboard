@@ -25,6 +25,7 @@ import json
 import math
 import time
 import traceback
+from operator import itemgetter
 from collections import Counter
 from sys import stdout
 from threading import Thread
@@ -97,12 +98,8 @@ class Run():
                 if player.get("role") == "banned":
                     banned_players.append(player["id"])
 
-            wr_time = None
-            worst_time = 0.0
-            mean = 0.0
-            sigma = 0.0
-            population = 0
-            value = 0.0
+            # First iteration: build a list of valid runs
+            valid_runs = []
             for run in leaderboard["data"]["runs"]:
                 value = run["run"]["times"]["primary_t"]
 
@@ -113,20 +110,31 @@ class Run():
                     elif value > previous_time:
                         is_speedrun = True
 
-                # Updating leaderboard size and rank
+                # Check if the run is valid (place > 0 & no banned participant)
                 if run["place"] > 0:
                     for player in run["run"]["players"]:
                         if player.get("id") in banned_players: break
                     else:
-                        # If no participant is banned and the run is valid
-                        population += 1
-                        if not wr_time: wr_time = value
-                        worst_time = max(worst_time, value)
-                        mean_temp = mean
-                        mean += (value - mean_temp) / population
-                        sigma += (value - mean_temp) * (value - mean)
+                        valid_runs.append(run)
 
-            if is_speedrun and population >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation
+            population = len(valid_runs)
+            if is_speedrun and population >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation and errors
+                # Sort and remove last 5%
+                valid_runs = sorted(valid_runs[:int(population*0.95) or None], key=lambda r: r["run"]["times"]["primary_t"])
+
+                # Second iteration: maths!
+                mean = 0.0
+                sigma = 0.0
+                population = 0
+                for run in valid_runs:
+                    value = run["run"]["times"]["primary_t"]
+                    population += 1
+                    mean_temp = mean
+                    mean += (value - mean_temp) / population
+                    sigma += (value - mean_temp) * (value - mean)
+
+                wr_time = valid_runs[0]["run"]["times"]["primary_t"]
+                worst_time = valid_runs[-1]["run"]["times"]["primary_t"]
                 standard_deviation = (sigma / population) ** 0.5
                 if standard_deviation > 0:  # All runs must not have the exact same time
                     # Get the +- deviation from the mean
@@ -143,9 +151,11 @@ class Run():
                         # Bonus points for long games
                         length_bonus = (1+(wr_time/TIME_BONUS_DIVISOR))
                         # More people means more accurate relative time and more optimised/hard to reach high times
-                        certainty_adjustment = (1-(1/(population-1))) if population != 1 else 0
+                        certainty_adjustment = 1-1/(population-1 or 1)
+                        # if self.category == "wk638ek1":
+                        #     print("{}\n{}\n{}\n{}\n{}".format(population, mean, worst_time, normalized_deviation, (1+(wr_time/TIME_BONUS_DIVISOR))))
                         # Give points
-                        self._points = ((normalized_deviation * certainty_adjustment) ** 2) * length_bonus * 10
+                        self._points = ((normalized_deviation * certainty_adjustment) ** 3) * length_bonus * 10
 
                         # If the run is an Individual Level and worth looking at, set the level count
                         if self.level and self._points > 0:

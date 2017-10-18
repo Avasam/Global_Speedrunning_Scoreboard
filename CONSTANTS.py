@@ -21,7 +21,6 @@
 # Contact:
 # samuel.06@hotmail.com
 ###########################################################################
-
 import os.path
 import sys
 from oauth2client.service_account import ServiceAccountCredentials
@@ -33,7 +32,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 #     try:
 #         with open("C:\ProgramData\WCL report analyser\WCL_API_KEY.txt", mode="r") as f: API_KEY = f.readline()
 API_KEY = ""
-SPREADSHEET_ID = "1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo"
+SPREADSHEET_ID = "1kY983c46wQP155V0sBoXUFVu4wg9qlErU4MqGVjIUV0"
 scope = ["https://spreadsheets.google.com/feeds"]
 CREDENTIALS_PATH = None
 try:
@@ -45,14 +44,16 @@ finally:
     credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 
 SEPARATOR = "-" * 64
+AUTOUPDATER_OFFSET = 0
+AUTOUPDATER_SHEET_START = 0  # 0 to disable
 
 COL_USERNAME = 2
 COL_POINTS = 3
 COL_LAST_UPDATE = 4
 COL_USERID = 5
 ROW_FIRST = 3
-MIN_LEADERBOARD_SIZE = 4
-MIN_RANK_PERCENT = 60 / 100
+MIN_LEADERBOARD_SIZE = 3
+TIME_BONUS_DIVISOR = 21600  # 6h (1/4 day) for +100%
 
 HTTPERROR_RETRY_DELAY = 5
 HTTP_RETRYABLE_ERRORS = [401, 420, 500, 502]

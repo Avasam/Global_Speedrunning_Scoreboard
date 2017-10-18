@@ -21,10 +21,11 @@
 # Contact:
 # samuel.06@hotmail.com
 ###########################################################################
-
+import json
 import math
 import time
 import traceback
+from operator import itemgetter
 from collections import Counter
 from sys import stdout
 from threading import Thread
@@ -46,103 +47,123 @@ class UserUpdaterError(Exception):
     pass
 
 
-class NotFoundError(UserUpdaterError):
+class SpeedrunComError(UserUpdaterError):
     """ raise NotFoundError({"error":"404 Not Found", "details":"Details of error"}) """
     pass
 
 
 class Run():
     id_ = ""
+    primary_t = 0.0
     game = ""
     category = ""
     variables = {}
     level = ""
     level_count = 0
-    _place = 0
     _points = 0
-    _leaderboard_size = 0
 
-    def __init__(self, id_, game, category, variables=None, level=""):
+    def __init__(self, id_, primary_t, game, category, variables={}, level=""):
         self.id_ = id_
+        self.primary_t = primary_t
         self.game = game
         self.category = category
-        if variables is None: self.variables = variables
+        self.variables = variables
         self.level = level
         self.__set_points()
 
     def __str__(self):
-        level_str = "Level: {}, ".format(self.level) if self.level else ""
-        return "Run: <Game: {}, Category: {}, {}{}/{} ÷{}>".format(self.game, self.category, level_str, self._place,
-                                                                   self._leaderboard_size, self.level_count + 1)
+        level_str = "Level/{}: {}, ".format( self.level_count, self.level) if self.level else ""
+        return "Run: <Game: {}, Category: {}, {}{} {}>".format(self.game, self.category, level_str, self.variables, math.ceil(self._points * 100) / 100)
 
     def compare_str(self):
-        return "{}-{}".format(self.level, self.category)
-
-    def __set_leaderboard_size_and_place(self):
-        try:
-            # If the run is an Individual Level, adapt the request url
-            lvl_cat_str = "level/{level}/".format(level=self.level) if self.level else "category/"
-            url = "https://www.speedrun.com/api/v1/leaderboards/{game}/{lvl_cat_str}{category}?video-only=true&embed=players".format(game=self.game,
-                                                                                                                                     lvl_cat_str=lvl_cat_str,
-                                                                                                                                     category=self.category)
-            for var_id, var_value in self.variables.items():
-                url += "&var-{id}={value}".format(id=var_id, value=var_value)
-            leaderboard = get_file(url)
-
-            # Manually recalculating a player's rank as leaderboards w/ only video verification may be smaller than the run originally shown
-            if len(leaderboard["data"]["runs"]) >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation and request
-                self._place = 0
-                self._leaderboard_size = 0
-                previous_time = leaderboard["data"]["runs"][0]["run"]["times"]["primary_t"]
-                is_speedrun = False
-                found = False
-                for run in leaderboard["data"]["runs"]:
-                    # Making sure this is a speedrun and not a score leaderboard
-                    if not is_speedrun:  # To avoid false negatives due to missing primary times, stop comparing once we know it's a speedrun
-                        if run["run"]["times"]["primary_t"] < previous_time:
-                            break  # Score based leaderboard. No need to keep looking
-                        elif run["run"]["times"]["primary_t"] > previous_time:
-                            is_speedrun = True
-
-                    # Updating leaderboard size and rank
-                    banned_players = []
-                    for player in leaderboard["data"]["players"]["data"]:
-                        if player.get("role") == "banned": banned_players.append(player["id"])
-                    if run["place"] > 0:
-                        is_banned = False
-                        for player in run["run"]["players"]:
-                            if player.get("id") in banned_players: is_banned = True
-                        if not is_banned:
-                            # If the user isn't banned and the run is valid
-                            self._leaderboard_size += 1
-                            if not found:
-                                self._place += 1
-                                if run["run"]["id"] == self.id_:
-                                    found = True
-                if not (is_speedrun and found): self._place = -1
-
-                # If the run is an Individual Level and worth looking at, set the level count
-                if self.level and self._place / self._leaderboard_size <= MIN_RANK_PERCENT:
-                    url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
-                    levels = get_file(url)
-                    self.level_count = len(levels["data"])
-
-        except UserUpdaterError as exception:
-            threadsException.append(exception.args[0])
-        except Exception:
-            threadsException.append({"error": "Unhandled", "details": traceback.format_exc()})
+        return "{}-{}".format(self.category, self.level)
 
     def __set_points(self):
         self._points = 0
-        self.__set_leaderboard_size_and_place()
+        # If the run is an Individual Level, adapt the request url
+        lvl_cat_str = "level/{level}/".format(level=self.level) if self.level else "category/"
+        url = "https://www.speedrun.com/api/v1/leaderboards/{game}/" \
+              "{lvl_cat_str}{category}?video-only=true&embed=players".format(game=self.game, lvl_cat_str=lvl_cat_str, category=self.category)
+        for var_id, var_value in self.variables.items():
+            url += "&var-{id}={value}".format(id=var_id, value=var_value)
+        leaderboard = get_file(url)
+
+        if len(leaderboard["data"]["runs"]) >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation
+            previous_time = leaderboard["data"]["runs"][0]["run"]["times"]["primary_t"]
+            is_speedrun = False
+
+            # Get a list of all banned players in this leaderboard
+            banned_players = []
+            for player in leaderboard["data"]["players"]["data"]:
+                if player.get("role") == "banned":
+                    banned_players.append(player["id"])
+
+            # First iteration: build a list of valid runs
+            valid_runs = []
+            for run in leaderboard["data"]["runs"]:
+                value = run["run"]["times"]["primary_t"]
+
+                # Making sure this is a speedrun and not a score leaderboard
+                if not is_speedrun:  # To avoid false negatives due to missing primary times, stop comparing once we know it's a speedrun
+                    if value < previous_time:
+                        break  # Score based leaderboard. No need to keep looking
+                    elif value > previous_time:
+                        is_speedrun = True
+
+                # Check if the run is valid (place > 0 & no banned participant)
+                if run["place"] > 0:
+                    for player in run["run"]["players"]:
+                        if player.get("id") in banned_players: break
+                    else:
+                        valid_runs.append(run)
+
+            population = len(valid_runs)
+            if is_speedrun and population >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation and errors
+                # Sort and remove last 5%
+                valid_runs = sorted(valid_runs[:int(population*0.95) or None], key=lambda r: r["run"]["times"]["primary_t"])
+
+                # Second iteration: maths!
+                mean = 0.0
+                sigma = 0.0
+                population = 0
+                for run in valid_runs:
+                    value = run["run"]["times"]["primary_t"]
+                    population += 1
+                    mean_temp = mean
+                    mean += (value - mean_temp) / population
+                    sigma += (value - mean_temp) * (value - mean)
+
+                wr_time = valid_runs[0]["run"]["times"]["primary_t"]
+                worst_time = valid_runs[-1]["run"]["times"]["primary_t"]
+                standard_deviation = (sigma / population) ** 0.5
+                if standard_deviation > 0:  # All runs must not have the exact same time
+                    # Get the +- deviation from the mean
+                    signed_deviation = mean - self.primary_t
+                    # Get the deviation from the mean of the worse time as a positive number
+                    lowest_deviation = worst_time - mean
+                    # These three shift the deviations up so that the worse time is now 0
+                    adjusted_deviation = signed_deviation+lowest_deviation
+                    adjusted_standard_deviation = standard_deviation+lowest_deviation
+                    adjusted_mean_deviation = 0+lowest_deviation
+                    if adjusted_deviation > 0:  # The last run isn't worth any points TODO: detect if a run is the last earlier in the code
+                        # Scale all the normalized deviations so that the mean is worth 1 but the worse stays 0
+                        normalized_deviation = (adjusted_deviation/adjusted_standard_deviation) * (1/(adjusted_mean_deviation/adjusted_standard_deviation))
+                        # Bonus points for long games
+                        length_bonus = (1+(wr_time/TIME_BONUS_DIVISOR))
+                        # More people means more accurate relative time and more optimised/hard to reach high times
+                        certainty_adjustment = 1-1/(population-1 or 1)
+                        # if self.category == "wk638ek1":
+                        #     print("{}\n{}\n{}\n{}\n{}".format(population, mean, worst_time, normalized_deviation, (1+(wr_time/TIME_BONUS_DIVISOR))))
+                        # Give points
+                        self._points = ((normalized_deviation * certainty_adjustment) ** 3) * length_bonus * 10
+
+                        # If the run is an Individual Level and worth looking at, set the level count
+                        if self.level and self._points > 0:
+                            url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
+                            levels = get_file(url)
+                            self.level_count = len(levels["data"])
+                            self._points /= self.level_count + 1
         print(self)
-        # Check to avoid errors
-        if self._leaderboard_size > self._place and self._leaderboard_size >= MIN_LEADERBOARD_SIZE and self._place > 0:
-            # Give points according to the formula
-            # ROUNDUP(MAX(0;LN(MAX(1;B$2-$D$34+2))*LN(MAX(1;(-$A3)+(B$2*$D$35+2)))*(1+$D$35/$A3)))
-            ln_1 = math.log(self._leaderboard_size - MIN_LEADERBOARD_SIZE + 2)
-            ln_2 = math.log(max(1, -self._place + (self._leaderboard_size * MIN_RANK_PERCENT + 2)))
-            self._points = max(0, ln_1 * ln_2 * (1 + MIN_RANK_PERCENT / self._place)) / (self.level_count + 1)
 
 
 class User:
@@ -158,18 +179,17 @@ class User:
         self._name = id_or_name
 
     def __str__(self) -> str:
-        return "User: <{}, {}, {}{}>".format(self._name, self._points, self._id, "(Banned)" if self._banned else "")
+        return "User: <{}, {}, {}{}>".format(self._name, math.ceil(self._points * 100) / 100, self._id, "(Banned)" if self._banned else "")
 
     def set_code_and_name(self) -> None:
         url = "https://www.speedrun.com/api/v1/users/{user}".format(user=self._id)
         try:
             infos = get_file(url)
-        except NotFoundError as exception:
+        except SpeedrunComError as exception:
             raise UserUpdaterError({"error": exception.args[0]["error"],
-                                    "details": "User \"{}\" not found. Make sure the name or ID is typed properly. "
-                                               "It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._id)})
-        if "status" in infos:
-            raise UserUpdaterError({"error": "{} (speedrun.com)".format(infos["status"]), "details": infos["message"]})
+                                    "details": "User \"{}\" not found.\n"
+                                               "Make sure the name or ID is typed properly. It's possible the user you're looking for changed its name. "
+                                               "In case of doubt, use its ID.".format(self._id)})
         self._id = infos["data"]["id"]
         self._weblink = infos["data"]["weblink"]
         self._name = infos["data"]["names"].get("international")
@@ -202,7 +222,7 @@ class User:
                             # ... and add it to the run's subcategory variables
                             pb_subcategory_variables[pb_var_id] = pb_var_value
 
-                    run = Run(pb["run"]["id"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["run"]["level"])
+                    run = Run(pb["run"]["id"], pb["run"]["times"]["primary_t"], pb["run"]["game"], pb["run"]["category"], pb_subcategory_variables, pb["run"]["level"])
                     # If a category has already been counted, only keep the one that's worth the most.
                     # This can happen in leaderboards with multiple coop runs or multiple subcategories.
                     if run._points > 0:
@@ -218,15 +238,8 @@ class User:
                 update_progress(1, 0)
 
         if not self._banned:
-            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._id)
-            try:
-                pbs = get_file(url)
-            except NotFoundError as exception:
-                raise UserUpdaterError({"error": exception.args[0]["error"],
-                                        "details": "User \"{}\" not found. Make sure the name or ID is typed properly. "
-                                                   "It's possible the user you're looking for changed its name. In case of doubt, use its ID.".format(self._id)})
-            if "status" in pbs:
-                raise UserUpdaterError({"error": "{} (speedrun.com)".format(pbs["status"]), "details": pbs["message"]})
+            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._id) #.format(user=self._id)
+            pbs = get_file(url)
             self._points = 0
             update_progress(0, len(pbs["data"]))
             threads = []
@@ -236,13 +249,11 @@ class User:
             for t in threads: t.join()
             # Sum up the runs' score
             self._point_distribution_str = "\nCategory-Level    | Points\n----------------- | ------".format(self._name)
-            for category, points in counted_runs.items():
+            for category_level, points in counted_runs.items():
                 self._points += points
-                self._point_distribution_str += "\n{} | {}".format(category, math.ceil(points * 10) / 10)
-            if self._banned:
-                self._points = 0  # In case the banned flag has been set mid-thread
-            else:
-                self._points = math.ceil(self._points)
+                self._point_distribution_str += "\n{0:<17} | {1}".format(category_level, math.ceil(points * 100) / 100)
+            if self._banned or self._points < 1:
+                self._points = 0  # In case the banned flag has been set mid-thread or the user doesn't have at least 1 point
         else:
             self._points = 0
         update_progress(1, 0)
@@ -263,25 +274,37 @@ def get_file(p_url: str) -> dict:
     print(p_url)  # debugstr
     while True:
         try:
-            data = session.get(p_url)
-        except requests.exceptions.ConnectionError as exception:
+            rawdata = session.get(p_url)
+        except requests.exceptions.ConnectionError as exception:  # Connexion error
             raise UserUpdaterError({"error": "Can't establish connexion to speedrun.com", "details": exception})
-        try:
-            data.raise_for_status()
-            break
-        except requests.exceptions.HTTPError as exception:
-            if data.status_code in HTTP_RETRYABLE_ERRORS:
-                print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
-                time.sleep(HTTPERROR_RETRY_DELAY)
-            elif data.status_code == 404:
-                raise NotFoundError({"error": "404 Not Found", "details": exception.args[0]})
-            else:
-                raise UserUpdaterError({"error": "HTTPError {}".format(data.status_code), "details": exception.args[0]})
 
-    data = data.json()
-    if type(data) != dict: print("{}:{}".format(type(data), data))  # debugstr
-    if "error" in data: raise UserUpdaterError({"error": data["status"], "details": data["error"]})
-    return (data)
+        try:
+            jsondata = rawdata.json()
+        except json.decoder.JSONDecodeError as exception:  # Didn't recieve a JSON file ...
+            try:
+                rawdata.raise_for_status()
+            except requests.exceptions.HTTPError as exception:  # ... because it's an HTTP error
+                if rawdata.status_code in HTTP_RETRYABLE_ERRORS:
+                    print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
+                    time.sleep(HTTPERROR_RETRY_DELAY)
+                    # No break or raise as we want to retry
+                else:
+                    raise UserUpdaterError({"error": "HTTPError {}".format(rawdata.status_code), "details": exception.args[0]})
+            else:  # ... we don't know why (elevate the exception)
+                print("ERROR/WARNING: rawdata=({})\'{}\'\n".format(type(rawdata), rawdata)) # debugstr
+                raise exception
+
+        else:
+            if "status" in jsondata:  # Speedrun.com custom error
+                if jsondata["status"] in HTTP_RETRYABLE_ERRORS:
+                    print("WARNING: {}. {}. Retrying in {} seconds.".format(jsondata["status"], jsondata["message"], HTTPERROR_RETRY_DELAY))  # debugstr
+                    time.sleep(HTTPERROR_RETRY_DELAY)
+                    # No break or raise as we want to retry
+                else:
+                    raise SpeedrunComError({"error": "{} (speedrun.com)".format(jsondata["status"]), "details": jsondata["message"]})
+
+            else:  # No error
+                return (jsondata)
 
 
 def update_progress(p_current: int, p_max: int) -> None:
@@ -391,7 +414,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
             error_str_list = []
             for e in threadsException: error_str_list.append("Error: {}\n{}".format(e["error"], e["details"]))
             error_str_counter = Counter(error_str_list)
-            errors_str = "{0}\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
+            errors_str = "{0}\nhttps://github.com/Avasam/Global_speedrunning_leaderboard/issues\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
             for error, count in error_str_counter.items(): errors_str += "[x{}] {}\n".format(count, error)
             text_output += ("\n" if text_output else "") + errors_str
 
@@ -420,54 +443,96 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
 
 # !Autoupdater
 class AutoUpdateUsers(Thread):
-    BASE_URL = "https://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset=0"
+    BASE_URL = "https://www.speedrun.com/api/v1/users?orderby=signup&max=200&offset={}".format(AUTOUPDATER_OFFSET)
     paused = True
     global statusLabel
+    global worksheet
+    global gs_client
 
     def __init__(self, p_statusLabel, **kwargs):
         Thread.__init__(self, **kwargs)
         self.statusLabel = p_statusLabel
+        self.worksheet = None
+        self.gs_client = None
 
     def run(self):
         def auto_updater_thread(user):
             while True:
                 self.__check_for_pause()
+            # try:
                 try:
-                    try:
-                        get_updated_user(user["id"], self.statusLabel)
-                        break
-                    except gspread.exceptions.RequestError as exception:
-                        if exception.args[0] in HTTP_RETRYABLE_ERRORS:
-                            print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0],
-                                                                                HTTPERROR_RETRY_DELAY))  # debugstr
-                            time.sleep(HTTPERROR_RETRY_DELAY)
-                        else:
-                            raise UserUpdaterError(
-                                {"error": "Unhandled RequestError", "details": traceback.format_exc()})
-                    except Exception:
-                        raise UserUpdaterError({"error": "Unhandled", "details": traceback.format_exc()})
-                except UserUpdaterError as exception:
-                    print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"]))  # debugstr
+                    get_updated_user(user["id"], self.statusLabel)
                     break
+                except gspread.exceptions.RequestError as exception:
+                    if exception.args[0] in HTTP_RETRYABLE_ERRORS:
+                        print("WARNING: {}. Retrying in {} seconds.".format(exception.args[0], HTTPERROR_RETRY_DELAY))  # debugstr
+                        time.sleep(HTTPERROR_RETRY_DELAY)
+                    else:
+                        raise UserUpdaterError({"error": "Unhandled RequestError", "details": traceback.format_exc()})
+                except Exception:
+                    raise UserUpdaterError({"error": "Unhandled", "details": traceback.format_exc()})
+            # except UserUpdaterError as exception:
+            #     print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"]))  # debugstr
+            #     break
+
+        # First update users from spreadsheet
+        if AUTOUPDATER_SHEET_START:
+            self.__check_for_pause()
+            # Check if already connected
+            if not (self.gs_client and self.worksheet):
+                # Authentify to Google Sheets API
+                self.statusLabel.configure(text="Establishing connexion to online Spreadsheet...")
+                gs_client = gspread.authorize(credentials)
+                print("https://docs.google.com/spreadsheets/d/{spreadsheet}\n".format(spreadsheet=SPREADSHEET_ID))
+                worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+            # Refresh credentials
+            gs_client.login()
+
+            worksheet = gs_client.open_by_key(SPREADSHEET_ID).sheet1
+
+            row_count = worksheet.row_count
+            print("slow call to GSheets")
+            cell_list = worksheet.range(ROW_FIRST, COL_USERID, row_count, COL_USERID)
+            print("slow call done")
+
+            row_count = len(cell_list)
+            if AUTOUPDATER_SHEET_START < row_count:
+                for row, cell in enumerate(cell_list):
+                    self.__check_for_pause()
+                    print("Auto-updater @ row: {}/{}".format(row + ROW_FIRST, row_count))
+                    try:
+                        auto_updater_thread({"id": cell.value})  # Not threaded
+                    except UserUpdaterError as exception:
+                        print(exception)
+                    except Exception as exception:
+                        print(exception)
+            else:
+                print("WARNING: There are less cells ({}) than the starting point({})".format(row_count,AUTOUPDATER_SHEET_START))
 
         url = self.BASE_URL
+        offset_tracker = AUTOUPDATER_OFFSET
         while True:
             self.__check_for_pause()
-            self.statusLabel.configure(text="Auto-updating userbase...")
-            users = get_file(url)
-            # threads = []
-            for user in users["data"]:
-                auto_updater_thread(user)  # Not threaded
-            # threads.append(Thread(target=auto_updater_thread, args=(user,)))
-            # for t in threads: t.start()
-            # for t in threads: t.join()
+            try:
+                self.statusLabel.configure(text="Auto-updating userbase...")
+                users = get_file(url)
+                # threads = []
+                for user in users["data"]:
+                    print("\nAuto-updater @ offset: {}".format(offset_tracker))
+                    auto_updater_thread(user)  # Not threaded
+                    offset_tracker += 1
+                # threads.append(Thread(target=auto_updater_thread, args=(user,)))
+                # for t in threads: t.start()
+                # for t in threads: t.join()
 
-            link_found = False
-            for link in users["pagination"]["links"]:
-                if link["rel"] == "next":
-                    url = link["uri"]
-                    link_found = True
-            if not link_found: url = self.BASE_URL
+                link_found = False
+                for link in users["pagination"]["links"]:
+                    if link["rel"] == "next":
+                        url = link["uri"]
+                        link_found = True
+                if not link_found: url = self.BASE_URL
+            except UserUpdaterError as exception:
+                print("WARNING: Skipping user {}. {}".format(user["id"], exception.args[0]["details"]))  # debugstr
 
     def __check_for_pause(self):
         while self.paused:

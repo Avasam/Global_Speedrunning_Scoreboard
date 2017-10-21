@@ -1,0 +1,5 @@
+# EditorConfig is awesome: http://EditorConfig.org
+
+# don't trim trailing whitespaces in markdown files
+[*.{md,markdown}]
+trim_trailing_whitespace = false

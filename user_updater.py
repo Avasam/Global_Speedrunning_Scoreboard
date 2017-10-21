@@ -25,7 +25,7 @@ import json
 import math
 import time
 import traceback
-from operator import itemgetter
+import re
 from collections import Counter
 from sys import stdout
 from threading import Thread
@@ -56,9 +56,12 @@ class Run():
     id_ = ""
     primary_t = 0.0
     game = ""
+    game_name = ""
     category = ""
+    category_name = ""
     variables = {}
     level = ""
+    level_name = ""
     level_count = 0
     _points = 0
 
@@ -66,17 +69,26 @@ class Run():
         self.id_ = id_
         self.primary_t = primary_t
         self.game = game
+        self.game_name = game
         self.category = category
+        self.category_name = category
         self.variables = variables
         self.level = level
+        self.level_name = level
         self.__set_points()
 
     def __str__(self):
         level_str = "Level/{}: {}, ".format( self.level_count, self.level) if self.level else ""
         return "Run: <Game: {}, Category: {}, {}{} {}>".format(self.game, self.category, level_str, self.variables, math.ceil(self._points * 100) / 100)
 
-    def compare_str(self):
-        return "{}-{}".format(self.category, self.level)
+    def __eq__(self, other):
+        return (self.category, self.level) == (other.category, other.level)
+
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __hash__(self):
+        return hash((self.category, self.level))
 
     def __set_points(self):
         self._points = 0
@@ -145,20 +157,25 @@ class Run():
                     adjusted_deviation = signed_deviation+lowest_deviation
                     adjusted_standard_deviation = standard_deviation+lowest_deviation
                     adjusted_mean_deviation = 0+lowest_deviation
-                    if adjusted_deviation > 0:  # The last run isn't worth any points TODO: detect if a run is the last earlier in the code
+                    if adjusted_deviation > 0:  # The last 5% of runs isn't worth any points
                         # Scale all the normalized deviations so that the mean is worth 1 but the worse stays 0
                         normalized_deviation = (adjusted_deviation/adjusted_standard_deviation) * (1/(adjusted_mean_deviation/adjusted_standard_deviation))
                         # Bonus points for long games
                         length_bonus = (1+(wr_time/TIME_BONUS_DIVISOR))
                         # More people means more accurate relative time and more optimised/hard to reach high times
                         certainty_adjustment = 1-1/(population-1 or 1)
-                        # if self.category == "wk638ek1":
-                        #     print("{}\n{}\n{}\n{}\n{}".format(population, mean, worst_time, normalized_deviation, (1+(wr_time/TIME_BONUS_DIVISOR))))
-                        # Give points
-                        self._points = ((normalized_deviation * certainty_adjustment) ** 3) * length_bonus * 10
 
-                        # If the run is an Individual Level and worth looking at, set the level count
+                        # Give points
+                        self._points = ((normalized_deviation * certainty_adjustment) ** 2) * length_bonus * 10
+                        # Set names
+                        game_category = re.split("/|#", leaderboard["data"]["weblink"][leaderboard["data"]["weblink"].rindex("com/")+4:].replace("_", " ").title())
+                        self.game_name = game_category[0]  # Always first of 2-3 items
+                        self.category_name = game_category[-1]  # Always last of 2-3 items
+
+                        # If the run is an Individual Level and worth looking at, set the level count and name
                         if self.level and self._points > 0:
+                            print(game_category)
+                            self.level_name = game_category[1]  # Always 2nd of 3 items
                             url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
                             levels = get_file(url)
                             self.level_count = len(levels["data"])
@@ -200,7 +217,7 @@ class User:
             self._points = 0
 
     def set_points(self) -> None:
-        counted_runs = {}
+        counted_runs = []
 
         def set_points_thread(pb):
             try:
@@ -226,10 +243,14 @@ class User:
                     # If a category has already been counted, only keep the one that's worth the most.
                     # This can happen in leaderboards with multiple coop runs or multiple subcategories.
                     if run._points > 0:
-                        if run.compare_str() in counted_runs:
-                            counted_runs[run.compare_str()] = max(counted_runs[run.compare_str()], run._points)
+                        for counted_run in counted_runs:
+                            if counted_run == run:
+                                if run._points > counted_run._points:
+                                    counted_run = run
+                                break
                         else:
-                            counted_runs[run.compare_str()] = run._points
+                            counted_runs.append(run)
+
             except UserUpdaterError as exception:
                 threadsException.append(exception.args[0])
             except Exception:
@@ -238,7 +259,7 @@ class User:
                 update_progress(1, 0)
 
         if not self._banned:
-            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._id) #.format(user=self._id)
+            url = "https://www.speedrun.com/api/v1/users/{user}/personal-bests".format(user=self._id)
             pbs = get_file(url)
             self._points = 0
             update_progress(0, len(pbs["data"]))
@@ -247,11 +268,25 @@ class User:
                 threads.append(Thread(target=set_points_thread, args=(pb,)))
             for t in threads: t.start()
             for t in threads: t.join()
+
             # Sum up the runs' score
-            self._point_distribution_str = "\nCategory-Level    | Points\n----------------- | ------".format(self._name)
-            for category_level, points in counted_runs.items():
-                self._points += points
-                self._point_distribution_str += "\n{0:<17} | {1}".format(category_level, math.ceil(points * 100) / 100)
+            counted_runs.sort(key=lambda r: r._points, reverse=True)
+            run_str_lst = []
+            biggest_str_length = 0
+            for run in counted_runs:
+                self._points += run._points
+                run_str = ("{game} - {category}{level}".format(game=run.game_name,
+                                                               category=run.category_name,
+                                                               level=" ({})".format(run.level_name) if run.level_name else ""))
+                run_pts = math.ceil((run._points * 100)) / 100
+                print(run_pts)
+                run_str_lst.append((run_str, run_pts))
+                biggest_str_length = max(biggest_str_length, len(run_str))
+
+            self._point_distribution_str = "\n{:<{}} | Points\n{} | -----".format("Game - Category (Level)", biggest_str_length, "-"*biggest_str_length)
+            for run_infos in run_str_lst:
+                self._point_distribution_str += "\n{game_cat_lvl:<{length}} | {points:.2f}".format(game_cat_lvl=run_infos[0], length=biggest_str_length, points=run_infos[1])
+
             if self._banned or self._points < 1:
                 self._points = 0  # In case the banned flag has been set mid-thread or the user doesn't have at least 1 point
         else:
@@ -400,7 +435,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
                 # If user not found, add a row to the spreadsheet
                 else:
                     text_output = "{} not found. Added a new row.".format(user)
-                    values = ["=IF($C{1}=$C{0};$A{0};ROW()-3)".format(row_count, row_count + 1),
+                    values = ["=IF($C{1}=$C{0};$A{0};ROW()-{2})".format(row_count, row_count + 1, ROW_FIRST-1),
                               linked_name,
                               user._points,
                               timestamp,
@@ -425,14 +460,12 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
 
     except httplib2.ServerNotFoundError as exception:
         raise UserUpdaterError({"error": "Server not found",
-                                "details": "{}\nPlease make sure you have an active internet connection".format(
-                                    exception)})
+                                "details": "{}\nPlease make sure you have an active internet connection".format(exception)})
     except (requests.exceptions.ChunkedEncodingError, ConnectionAbortedError) as exception:
         raise UserUpdaterError({"error": "Connexion interrupted", "details": exception})
     except gspread.exceptions.SpreadsheetNotFound:
         raise UserUpdaterError({"error": "Spreadsheet not found",
-                                "details": "https://docs.google.com/spreadsheets/d/{spreadsheet}".format(
-                                    spreadsheet=SPREADSHEET_ID)})
+                                "details": "https://docs.google.com/spreadsheets/d/{spreadsheet}".format(spreadsheet=SPREADSHEET_ID)})
     except requests.exceptions.ConnectionError as exception:
         raise UserUpdaterError({"error": "Can't connect to Google Sheets", "details": exception})
     except oauth2client.client.HttpAccessTokenRefreshError as exception:
@@ -476,7 +509,7 @@ class AutoUpdateUsers(Thread):
             #     break
 
         # First update users from spreadsheet
-        if AUTOUPDATER_SHEET_START:
+        if AUTOUPDATER_SHEET_START >= ROW_FIRST:
             self.__check_for_pause()
             # Check if already connected
             if not (self.gs_client and self.worksheet):

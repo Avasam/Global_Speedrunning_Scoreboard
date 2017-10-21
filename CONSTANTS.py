@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###########################################################################
-# Ava's Global speedrunning leaderboard
+# Ava's Global Speedrunning Scoreboard
 # Copyright (C) 2017 Samuel Therrien
 #
 # This program is free software: you can redistribute it and/or modify
@@ -31,20 +31,20 @@ from oauth2client.service_account import ServiceAccountCredentials
 #     print("API_KEY not in sys._MEIPASS. Looking for file on local computer.")
 #     try:
 #         with open("C:\ProgramData\WCL report analyser\WCL_API_KEY.txt", mode="r") as f: API_KEY = f.readline()
-API_KEY = ""
-SPREADSHEET_ID = "1kY983c46wQP155V0sBoXUFVu4wg9qlErU4MqGVjIUV0"
+# API_KEY = ""
+
+SPREADSHEET_ID = "1KpMnCdzFHmfU0XDzUon5XviRis1MvlB5M6Y8fyIvcmo"
 scope = ["https://spreadsheets.google.com/feeds"]
 CREDENTIALS_PATH = None
 try:
     CREDENTIALS_PATH = os.path.join(sys._MEIPASS, "JSON_CREDENTIALS.json")
 except AttributeError:
     print("CREDENTIALS not in sys._MEIPASS. Looking for file on local computer.")
-    CREDENTIALS_PATH = "C:\ProgramData\Global speedrunning leaderboard\JSON_CREDENTIALS.json"
+    CREDENTIALS_PATH = "C:\ProgramData\Global Speedrunning Scoreboard\JSON_CREDENTIALS.json"
 finally:
     credentials = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
 
 SEPARATOR = "-" * 64
-AUTOUPDATER_OFFSET = 0
 ROW_FIRST = 3
 COL_USERNAME = 2
 COL_POINTS = 3
@@ -52,7 +52,8 @@ COL_LAST_UPDATE = 4
 COL_USERID = 5
 MIN_LEADERBOARD_SIZE = 3
 TIME_BONUS_DIVISOR = 21600  # 6h (1/4 day) for +100%
-AUTOUPDATER_SHEET_START = ROW_FIRST  # < ROW_FIRST to disable
+AUTOUPDATER_OFFSET = 0
+AUTOUPDATER_SHEET_START = 0  # < ROW_FIRST to disable
 
 HTTPERROR_RETRY_DELAY = 5
 HTTP_RETRYABLE_ERRORS = [401, 420, 500, 502]

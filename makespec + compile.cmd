@@ -4,8 +4,8 @@ pyi-makespec ^
     --add-binary favicon.ico;. ^
     --add-binary LICENSE.txt;. ^
     --add-binary README.md;. ^
-    --add-binary "C:\ProgramData\Global speedrunning leaderboard";. ^
-    --name "Global speedrunning leaderboard" ^
+    --add-binary "C:\ProgramData\Global Speedrunning Scoreboard";. ^
+    --name "Global Speedrunning Scoreboard" ^
     ui.py
     ::--key KEY
     ::--version-file FILE
@@ -14,7 +14,7 @@ pyinstaller ^
     --distpath ..\ ^
     --noconfirm ^
     --clean ^
-    "Global speedrunning leaderboard.spec"
+    "Global Speedrunning Scoreboard.spec"
     ::--key KEY
     ::--version-file FILE
 
@@ -24,8 +24,8 @@ pyi-makespec ^
     --add-binary favicon.ico;. ^
     --add-binary LICENSE.txt;. ^
     --add-binary README.md;. ^
-    --add-binary "C:\ProgramData\Global speedrunning leaderboard";. ^
-    --name "Global speedrunning leaderboard [noconsole]" ^
+    --add-binary "C:\ProgramData\Global Speedrunning Scoreboard";. ^
+    --name "Global Speedrunning Scoreboard [noconsole]" ^
     --noconsole ^
     ui.py
     ::--key KEY
@@ -35,7 +35,7 @@ pyinstaller ^
     --distpath ..\ ^
     --noconfirm ^
     --clean ^
-    "Global speedrunning leaderboard [noconsole].spec"
+    "Global Speedrunning Scoreboard [noconsole].spec"
     ::--key KEY
     ::--version-file FILE
 

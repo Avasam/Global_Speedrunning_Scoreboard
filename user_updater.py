@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###########################################################################
-# Ava's Global speedrunning leaderboard
+# Ava's Global Speedrunning Scoreboard
 # Copyright (C) 2017 Samuel Therrien
 #
 # This program is free software: you can redistribute it and/or modify
@@ -129,10 +129,10 @@ class Run():
                     else:
                         valid_runs.append(run)
 
-            population = len(valid_runs)
-            if is_speedrun and population >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation and errors
+            original_population = len(valid_runs)
+            if is_speedrun and original_population >= MIN_LEADERBOARD_SIZE:  # Check to avoid useless computation and errors
                 # Sort and remove last 5%
-                valid_runs = sorted(valid_runs[:int(population*0.95) or None], key=lambda r: r["run"]["times"]["primary_t"])
+                valid_runs = sorted(valid_runs[:int(original_population*0.95) or None], key=lambda r: r["run"]["times"]["primary_t"])
 
                 # Second iteration: maths!
                 mean = 0.0
@@ -163,7 +163,7 @@ class Run():
                         # Bonus points for long games
                         length_bonus = (1+(wr_time/TIME_BONUS_DIVISOR))
                         # More people means more accurate relative time and more optimised/hard to reach high times
-                        certainty_adjustment = 1-1/(population-1 or 1)
+                        certainty_adjustment = 1-1/original_population
 
                         # Give points
                         self._points = ((normalized_deviation * certainty_adjustment) ** 2) * length_bonus * 10
@@ -174,12 +174,11 @@ class Run():
 
                         # If the run is an Individual Level and worth looking at, set the level count and name
                         if self.level and self._points > 0:
-                            print(game_category)
                             self.level_name = game_category[1]  # Always 2nd of 3 items
                             url = "https://www.speedrun.com/api/v1/games/{game}/levels".format(game=self.game)
                             levels = get_file(url)
                             self.level_count = len(levels["data"])
-                            self._points /= self.level_count + 1
+                            self._points /= self.level_count or 1
         print(self)
 
 
@@ -279,7 +278,6 @@ class User:
                                                                category=run.category_name,
                                                                level=" ({})".format(run.level_name) if run.level_name else ""))
                 run_pts = math.ceil((run._points * 100)) / 100
-                print(run_pts)
                 run_str_lst.append((run_str, run_pts))
                 biggest_str_length = max(biggest_str_length, len(run_str))
 
@@ -398,7 +396,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
 
         if threadsException == []:
             if user._points > 0:  # TODO: once the database is full, move this in "# If user not found, add a row to the spreadsheet" (user should also be removed from spreadsheet)
-                statusLabel.configure(text="Updating the leaderboard...")
+                statusLabel.configure(text="Updating the scoreboard...")
                 print("\nLooking for {}".format(user._id))  # debugstr
 
                 # Try and find the user by its id_
@@ -449,7 +447,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
             error_str_list = []
             for e in threadsException: error_str_list.append("Error: {}\n{}".format(e["error"], e["details"]))
             error_str_counter = Counter(error_str_list)
-            errors_str = "{0}\nhttps://github.com/Avasam/Global_speedrunning_leaderboard/issues\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
+            errors_str = "{0}\nhttps://github.com/Avasam/Global_Speedrunning_Scoreboard/issues\nNot updloading data as some errors were caught during execution:\n{0}\n".format(SEPARATOR)
             for error, count in error_str_counter.items(): errors_str += "[x{}] {}\n".format(count, error)
             text_output += ("\n" if text_output else "") + errors_str
 
@@ -471,7 +469,7 @@ def get_updated_user(p_user_id: str, p_statusLabel: object) -> str:
     except oauth2client.client.HttpAccessTokenRefreshError as exception:
         raise UserUpdaterError({"error": "Authorization problems",
                                 "details": "{}\nThis version of the app may be outdated. "
-                                           "Please see https://github.com/Avasam/Global_speedrunning_leaderboard/releases".format(exception)})
+                                           "Please see https://github.com/Avasam/Global_Speedrunning_Scoreboard/releases".format(exception)})
 
 
 # !Autoupdater
